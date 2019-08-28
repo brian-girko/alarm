@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" type="text/css" href="index.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<!-- data-tab: alarm, stopwatch, timer -->
+<!-- data-alarm: view, edit -->
+<!-- data-stopwatch: working, start, paused -->
+<!-- data-timer: working, start, paused -->
+<body
+  data-tab="alarm"
+  data-alarm="view"
+  data-stopwatch="start"
+  data-timer="start"
+  vbox>
+  <header hbox align="center">
+    <h1 for="alarm" class="medium">Alarm</h1>
+    <h1 for="stopwatch" class="medium">Stopwatch</h1>
+    <h1 for="timer" class="medium">Timer</h1>
+    <input type="button" id="plus">
+  </header>
+  <div id="content" hbox flex="1">
+    <div for="alarm" class="alarm" vbox>
+      <div data-id="content" vbox flex="1">
+        <div data-id="toast" class="bulky">
+          <h1>Alarm in 14 hours 49 minutes</h1>
+          <h3>Mon 26 Aug, 06:00</h3>
+        </div>
+        <template>
+          <div class="entry" hbox align="center" disabled=true>
+            <span class="large" data-id="time">00:00</span>
+            <span class="small" data-id="date">Mon, 00 Aug</span>
+            <input type="checkbox" class="switch">
+            <input type="button" data-command="remove">
+          </div>
+        </template>
+        <div data-id="entries" flex="1"></div>
+      </div>
+      <div data-id="edit" vbox flex="1">
+        <div hbox align="center" pack="center" class="bulky">
+          <table>
+            <tbody>
+              <tr>
+                <td align="center"><input data-id="hours" type="number" min="0" max="23" value="00"></td>
+                <td align="center"><input data-id="minutes" type="number" min="0" max="59" value="00"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div data-id="current" class="small">Today</div>
+        <div data-id="days" hbox>
+          <input type="checkbox" data-id="M" value="1">
+          <input type="checkbox" data-id="T" value="2">
+          <input type="checkbox" data-id="W" value="3">
+          <input type="checkbox" data-id="T" value="4">
+          <input type="checkbox" data-id="F" value="5">
+          <input type="checkbox" data-id="S" value="6">
+          <input type="checkbox" data-id="S" value="0">
+        </div>
+        <div flex="1">
+          <table>
+            <tr>
+              <td><div>
+                <h1>Snooze</h1>
+                <h3>5 minutes, 3 times</h3>
+              </div></td>
+              <td align="right"><input type="checkbox" class="switch"></td>
+            </tr>
+          </table>
+        </div>
+        <div data-id="tools" class="bulky">
+          <input type="button" value="Cancel" data-command="cancel">
+          <input type="button" value="Save" data-command="save">
+        </div>
+      </div>
+    </div>
+    <div for="stopwatch" class="stopwatch" vbox align="center">
+      <div flex="1" data-id="center"></div>
+      <div class="bulky">
+        <h1 data-id="counter">00:00:00.00</h1>
+        <h3 data-id="counter-laps"></h3>
+      </div>
+      <div data-id="content">
+        <table class="small">
+          <tbody></tbody>
+        </table>
+      </div>
+      <div hbox align="end">
+        <div data-id="tools" class="bulky">
+          <input type="button" value="Start" data-command="start">
+          <input type="button" value="Stop" data-command="stop">
+          <input type="button" value="Lap" data-command="lap">
+          <input type="button" value="Resume" data-command="resume">
+          <input type="button" value="Reset" data-command="reset">
+        </div>
+      </div>
+    </div>
+    <div class="timer" vbox>
+      <div hbox align="center" pack="center" flex="1">
+        <table>
+          <thead>
+            <tr>
+              <th>Hours</th>
+              <th>Minutes</th>
+              <th>Seconds</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="number" data-id="hours" min="0" max="99" value="00"></td>
+              <td><input type="number" data-id="minutes" min="0" max="59" value="30"></td>
+              <td><input type="number" data-id="seconds" min="0" max="59" value="00"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div data-id="tools" class="bulky">
+        <input type="button" value="Start" data-command="start">
+        <input type="button" value="Resume" data-command="resume">
+        <input type="button" value="Puause" data-command="pause">
+        <input type="button" value="Cancel" data-command="cancel">
+      </div>
+    </div>
+  </div>
+  <footer id="tabs" hbox>
+    <input type="radio" name="tab" id="alarm" checked>
+    <label for="alarm">Alarm</label>
+    <input type="radio" name="tab" id="stopwatch">
+    <label for="stopwatch">Stopwatch</label>
+    <input type="radio" name="tab" id="timer">
+    <label for="timer">Timer</label>
+  </footer>
+  <script type="text/javascript" src="alarm.js"></script>
+  <script type="text/javascript" src="stopwatch.js"></script>
+  <script type="text/javascript" src="timer.js"></script>
+  <script type="text/javascript" src="ui.js"></script>
+</body>
+</html>
