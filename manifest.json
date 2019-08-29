@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "name": "Alarm, Timer and Stopwatch",
   "description": "A powerful alarm extension that supports timer and stopwatch with snooze",
   "permissions": [
@@ -9,6 +9,7 @@
     "notifications"
   ],
   "offline_enabled": true,
+  "homepage_url": "https://add0n.com/alarm.html",
   "background": {
     "persistent": false,
     "scripts": [
