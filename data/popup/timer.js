@@ -14,14 +14,16 @@ timer.ms2time = duration => ({
   hours: Math.floor((duration / (1000 * 60 * 60)) % 24)
 });
 
+timer.format = num => ('00' + num).substr(-2);
+
 timer.tick = (once = false) => {
   const n = timer.when - Date.now();
 
   if (n > 0) {
     const o = timer.ms2time(n);
-    hours.value = ('00' + o.hours).substr(-2);
-    minutes.value = ('00' + o.minutes).substr(-2);
-    seconds.value = ('00' + o.seconds).substr(-2);
+    hours.value = timer.format(o.hours);
+    minutes.value = timer.format(o.minutes);
+    seconds.value = timer.format(o.seconds);
 
     window.clearTimeout(timer.id);
     if (once !== true) {
@@ -34,9 +36,9 @@ timer.tick = (once = false) => {
 };
 
 timer.start = () => {
-  hours.value = Math.max(0, hours.value);
-  minutes.value = Math.min(59, Math.max(0, minutes.value));
-  seconds.value = Math.min(59, Math.max(0, seconds.value));
+  hours.value = timer.format(Math.max(0, hours.value));
+  minutes.value = timer.format(Math.min(59, Math.max(0, minutes.value)));
+  seconds.value = timer.format(Math.min(59, Math.max(0, seconds.value)));
 
   const when = ((Number(hours.value) * 60 + Number(minutes.value)) * 60 + Number(seconds.value)) * 1000;
   if (when) {
