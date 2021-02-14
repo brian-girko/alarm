@@ -2,9 +2,10 @@
 
 const audio = {};
 audio.cache = {};
-audio.play = (id, src, n = 5) => {
+audio.play = (id, src, n = 5, volume = 0.8) => {
   audio.stop(id);
   const e = new Audio();
+  e.volume = volume;
   e.addEventListener('ended', function() {
     n -= 1;
     if (n > 0) {
@@ -51,31 +52,40 @@ const alarms = {
     }
   },
   fire({name}) {
-    if (name.startsWith('timer-')) {
-      audio.play(name, 'data/sounds/4.mp3');
-      chrome.notifications.clear(name, () => chrome.notifications.create(name, {
+    const set = (name, title, message = `Time's up`) => chrome.notifications.clear(name, () => {
+      chrome.notifications.create(name, {
         type: 'basic',
         iconUrl: 'data/icons/48.png',
-        title: 'Timer',
-        message: 'Time\'s up',
+        title,
+        message: message + '\n\n' + (new Date()).toLocaleString(),
         priority: 2,
-        requireInteraction: true
-      }));
+        requireInteraction: true,
+        buttons: [{
+          title: 'Snooze after 5 minutes'
+        }, {
+          title: 'Snooze after 10 minutes'
+        }]
+      });
+    });
+
+    if (name.startsWith('timer-')) {
+      chrome.storage.local.get({
+        'src-timer': 'data/sounds/4.mp3',
+        'repeats-timer': 5,
+        'volume-timer': 0.8
+      }, prefs => {
+        audio.play(name, prefs['src-timer'], prefs['repeats-timer'], prefs['volume-timer']);
+        set(name, 'Timer');
+      });
     }
     else if (name.startsWith('alarm-')) {
       const id = name.split(':')[0];
       chrome.storage.local.get({
-        alarms: []
+        'alarms': [],
+        'src-alarm': 'data/sounds/1.mp3',
+        'repeats-alarm': 5,
+        'volume-alarm': 0.8
       }, prefs => {
-        audio.play(id, 'data/sounds/1.mp3');
-        chrome.notifications.clear(id, () => chrome.notifications.create(id, {
-          type: 'basic',
-          iconUrl: 'data/icons/48.png',
-          title: 'Alarm',
-          message: 'Time\'s up',
-          priority: 2,
-          requireInteraction: true
-        }));
         const o = prefs.alarms.filter(a => a.id === id).shift();
         if (o.snooze) {
           alarms.create('audio-' + id + '/1', {
@@ -85,19 +95,36 @@ const alarms = {
             when: Date.now() + 10 * 60 * 1000
           });
         }
+        audio.play(id, prefs['src-alarm'], prefs['repeats-alarm'], prefs['volume-alarm']);
+        set(id, 'Alarm', o.name);
       });
     }
     else if (name.startsWith('audio-')) {
       const id = name.replace('audio-', '').split('/')[0];
-      audio.play(id, 'data/sounds/1.mp3');
+      chrome.storage.local.get({
+        'src-misc': 'data/sounds/5.mp3',
+        'repeats-misc': 5,
+        'volume-misc': 0.8
+      }, prefs => {
+        audio.play(id, prefs['src-misc'], prefs['repeats-misc'], prefs['volume-misc']);
+        let title = 'Misc';
+        if (id.startsWith('alarm-')) {
+          title = 'Alarm';
+        }
+        else if (id.startsWith('timer-')) {
+          title = 'Timer';
+        }
+        set(id, title);
+      });
     }
   },
-  clear(name) {
+  clear(name, callback = () => {}) {
     if (alarms.cache[name]) {
       window.clearTimeout(alarms.cache[name].id);
+      callback();
     }
     else {
-      chrome.alarms.clear(name);
+      chrome.alarms.clear(name, callback);
     }
   },
   get(name, c) {
@@ -127,20 +154,41 @@ const alarms = {
 alarms.cache = {};
 chrome.alarms.onAlarm.addListener(alarms.fire);
 
-const silent = id => {
+const silent = (id, callback = () => {}) => {
   audio.stop(id);
   chrome.notifications.clear(id);
-  alarms.getAll(as => as.filter(a => a.name.startsWith('audio-' + id)).forEach(a => alarms.clear(a.name)));
-};
-chrome.notifications.onClicked.addListener(silent);
-chrome.notifications.onClosed.addListener(silent);
 
-chrome.runtime.onMessage.addListener((request, sender, respose) => {
+  alarms.getAll(as => {
+    as = as.filter(a => a.name.startsWith('audio-' + id));
+    const v = as.map(a => new Promise(resolve => alarms.clear(a.name, resolve)));
+    Promise.all(v).then(callback);
+  });
+};
+chrome.notifications.onClicked.addListener(id => silent(id));
+chrome.notifications.onClosed.addListener(id => silent(id));
+chrome.notifications.onShowSettings.addListener(id => silent(id));
+chrome.notifications.onPermissionLevelChanged.addListener(id => silent(id));
+chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
+  silent(id, () => {
+    buttonIndex += 1;
+    alarms.create('audio-' + id + '/' + buttonIndex, {
+      when: Date.now() + buttonIndex * 5 * 60 * 1000
+    });
+  });
+});
+
+const onMessage = (request, sender, respose) => {
   if (request.method === 'set-alarm') {
     alarms.create(request.name, request.info);
   }
   else if (request.method === 'clear-alarm') {
-    alarms.clear(request.name);
+    request.name = request.name.split(':')[0];
+    alarms.getAll(as => {
+      as = as.filter(a => a.name.indexOf(request.name) !== -1);
+      as.forEach(a => {
+        alarms.clear(a.name);
+      });
+    });
   }
   else if (request.method === 'get-alarm') {
     alarms.get(request.name, respose);
@@ -154,14 +202,18 @@ chrome.runtime.onMessage.addListener((request, sender, respose) => {
     const sets = request.jobs.filter(j => j.method === 'set-alarm').map(j => j.name);
     const clears = request.jobs.filter(j => j.method === 'clear-alarm').filter(j => sets.indexOf(j.name) === -1);
     for (const job of clears) {
-      alarms.clear(job.name);
+      onMessage({
+        method: 'clear-alarm',
+        name: job.name
+      });
     }
     request.jobs.filter(j => j.method === 'set-alarm').forEach(j => alarms.create(j.name, j.info));
   }
   else if (request.method === 'remove-all-notifications') {
     chrome.notifications.getAll(ns => Object.keys(ns).forEach(silent));
   }
-});
+};
+chrome.runtime.onMessage.addListener(onMessage);
 
 /* FAQs & Feedback */
 {
@@ -177,10 +229,11 @@ chrome.runtime.onMessage.addListener((request, sender, respose) => {
         if (reason === 'install' || (prefs.faqs && reason === 'update')) {
           const doUpdate = (Date.now() - prefs['last-update']) / 1000 / 60 / 60 / 24 > 45;
           if (doUpdate && previousVersion !== version) {
-            tabs.create({
+            tabs.query({active: true, currentWindow: true}, tbs => tabs.create({
               url: page + '?version=' + version + (previousVersion ? '&p=' + previousVersion : '') + '&type=' + reason,
-              active: reason === 'install'
-            });
+              active: reason === 'install',
+              ...(tbs && tbs.length && {index: tbs[0].index + 1})
+            }));
             storage.local.set({'last-update': Date.now()});
           }
         }

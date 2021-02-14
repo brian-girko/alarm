@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Options Page :: Alarm, Timer and Stopwatch</title>
+</head>
+<body>
+  <form id="save">
+    <table>
+      <tr>
+        <td><label for="volume-timer">Timer sound level (0 - 100)</label></td>
+        <td><input id="volume-timer" type="number" min="0" max="100"></td>
+      </tr>
+      <tr>
+        <td><label for="volume-alarm">Alarm sound level (0 - 100)</label></td>
+        <td><input id="volume-alarm" type="number" min="0" max="100"></td>
+      </tr>
+      <tr>
+        <td><label for="volume-misc">Misc sound level (0 - 100)</label></td>
+        <td><input id="volume-misc" type="number" min="0" max="100"></td>
+      </tr>
+    </table>
+
+    <p>
+      <input type="button" id="support" value="Support Development">
+      <input type="button" id="reset" value="Reset">
+      <input type="submit" value="Save">
+      <span id="toast"></span>
+    </p>
+  </form>
+  <script type="text/javascript" src="index.js"></script>
+</body>
+</html>

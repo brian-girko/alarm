@@ -1,8 +1,9 @@
 {
   "manifest_version": 2,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "name": "Alarm, Timer and Stopwatch",
-  "description": "A powerful alarm extension that supports timer and stopwatch with snooze",
+  "description": "__MSG_description__",
+  "default_locale": "en",
   "permissions": [
     "storage",
     "alarms",
@@ -29,5 +30,9 @@
   },
   "browser_action": {
     "default_popup": "data/popup/index.html"
+  },
+  "options_ui": {
+    "page": "data/options/index.html",
+    "chrome_style": true
   }
 }

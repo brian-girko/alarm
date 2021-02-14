@@ -226,7 +226,8 @@ alarm.toast = () => {
         hours: Math.min(23, Math.max(0, Number(hours.value))),
         minutes: Math.min(59, Math.max(0, Number(minutes.value)))
       },
-      snooze: document.querySelector('.alarm [data-id="edit"] .switch').checked
+      snooze: document.querySelector('.alarm [data-id="edit"] .switch').checked,
+      name: document.querySelector('.alarm [data-id="name"]').value
     };
     const index = ids.indexOf(id);
     if (index === -1) {
@@ -260,7 +261,8 @@ alarm.toast = () => {
       };
     })(),
     snooze: false,
-    id: 'alarm-' + Math.random()
+    id: 'alarm-' + Math.random(),
+    name: ''
   }, restart = false) => {
     [...document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]')].forEach(e => {
       e.checked = o.days.indexOf(Number(e.value)) !== -1;
@@ -270,6 +272,7 @@ alarm.toast = () => {
     document.querySelector('.alarm [data-id="edit"] .switch').checked = o.snooze;
     document.querySelector('.alarm [data-id="edit"]').dataset.assign = o.id;
     document.querySelector('.alarm [data-id="edit"]').dataset.restart = restart;
+    document.querySelector('.alarm [data-id="name"]').value = o.name || '';
 
     document.body.dataset.alarm = 'edit';
   };
