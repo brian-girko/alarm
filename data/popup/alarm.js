@@ -90,7 +90,10 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
 }, prefs => {
   const t = document.querySelector('.alarm template');
   const entries = document.querySelector('.alarm div[data-id="entries"]');
-  for (const o of prefs.alarms) {
+
+  for (const o of prefs.alarms.sort((a, b) => {
+    return a.time.hours * 60 + a.time.minutes - (b.time.hours * 60 + b.time.minutes);
+  })) {
     const {id, time, days} = o;
     const clone = document.importNode(t.content, true);
     // time
