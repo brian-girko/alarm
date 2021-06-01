@@ -351,6 +351,15 @@ body[data-stopwatch="paused"] .stopwatch input[type="button"]:not([data-command=
   color: var(--color-dark);
   font-weight: normal;
 }
+.timer [data-id="presets"] div span {
+  flex: 1;
+  text-align: center;
+  color: var(--color-dark);
+  cursor: pointer;
+}
+body[data-timer="working"] [data-id="presets"] {
+  display: none;
+}
 body[data-timer="start"] .timer input[type="button"]:not([data-command="start"]) {
   display: none;
 }

@@ -217,6 +217,9 @@ alarm.toast = () => {
         current.textContent = alarm.format(d);
       }
     }
+    if (days.length === 0) {
+      document.querySelector('.alarm [data-id="edit"] [data-id="once"]').checked = true;
+    }
   };
   edit.addEventListener('change', onchange);
   edit.addEventListener('input', onchange);
@@ -271,7 +274,7 @@ alarm.toast = () => {
       };
     })(),
     snooze: false,
-    once: false,
+    once: true,
     id: 'alarm-' + Math.random(),
     name: ''
   }, restart = false) => {

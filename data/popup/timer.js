@@ -106,3 +106,14 @@ chrome.runtime.sendMessage({
     timer.resume(Number(w) + Date.now(), -1);
   }
 });
+
+document.querySelector('.timer [data-id="presets"]').addEventListener('click', e => {
+  const value = e.target.dataset.value;
+
+  if (value) {
+    const [hh, mm, ss] = value.split(':');
+    hours.value = hh.padStart(2, '0');
+    minutes.value = mm.padStart(2, '0');
+    seconds.value = ss.padStart(2, '0');
+  }
+});
