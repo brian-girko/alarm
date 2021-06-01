@@ -1,7 +1,3 @@
-:root {
-  --width: 400px;
-}
-
 @font-face {
   font-family: 'Open Sans';
   font-weight: 300;
@@ -22,6 +18,7 @@
 }
 
 :root {
+  --header: #444548;
   --color: #fff;
   --color-pink: #9a9dfc;
   --color-dark: #a0a0a0;
@@ -32,7 +29,9 @@
   --font-small: 12px;
   --font-medium: 22px;
   --font-normal: 15px;
-  --font-large: 32px;
+  --font-large: 28px;
+
+  --width: 400px;
 }
 
 body {
@@ -81,7 +80,8 @@ input[type="number"] {
   text-align: center;
 }
 header {
-  margin: 10px;
+  padding: 10px;
+  background-color: var(--header);
 }
 header h1 {
   display: inline-block;
@@ -116,6 +116,7 @@ body[data-tab="alarm"][data-alarm="edit"] header input[type=button] {
 footer {
   justify-content: space-around;
   padding: 15px 0;
+  background-color: var(--header);
 }
 footer input[type=radio] {
   display: none;
@@ -252,7 +253,7 @@ body[data-tab="timer"] #content {
   border: none;
   outline: none;
   width: 100%;
-  padding: 5px;
+  padding: 10px 5px;
   box-sizing: border-box;
 }
 body[data-alarm="view"] div[data-id="edit"] {
@@ -265,6 +266,19 @@ body[data-alarm="view"] div[data-id="edit"] {
   overflow: auto;
 }
 body[data-alarm="edit"] div[data-id="content"] {
+  display: none;
+}
+.alarm .entry {
+  position: relative;
+}
+.alarm .entry [data-id=once] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: var(--bg-pink-color);
+  padding: 0 10px;
+}
+.alarm .entry [data-id=once]:empty {
   display: none;
 }
 
@@ -377,8 +391,8 @@ body[data-timer="paused"] .timer input[type="button"]:not([data-command="resume"
   font-size: var(--font-small);
 }
 .bulky {
-  margin-top: 50px;
-  margin-bottom: 50px;
+  margin-top: 40px;
+  margin-bottom: 40px;
 }
 .hidden {
   display: none;

@@ -46,7 +46,11 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('change
       }));
       // set new alarms
       if (target.checked) {
-        const periodInMinutes = entry.querySelector('[data-id=date]').classList.contains('range') ? 7 * 24 * 60 : undefined;
+        let periodInMinutes = undefined;
+        if (entry.querySelector('[data-id=once]').textContent === '') {
+          periodInMinutes = entry.querySelector('[data-id=date]').classList.contains('range') ? 7 * 24 * 60 : undefined;
+        }
+
         entry.times.forEach((when, index) => jobs.push({
           method: 'set-alarm',
           info: {
@@ -126,6 +130,8 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
     const active = alarms.some(a => a.name.startsWith(id));
     entry.setAttribute('disabled', active === false);
     clone.querySelector('input[type="checkbox"]').checked = active;
+
+    entry.querySelector('[data-id="once"]').textContent = o.once ? 'once' : '';
     entries.appendChild(clone);
   }
   alarm.toast();
@@ -229,8 +235,9 @@ alarm.toast = () => {
         hours: Math.min(23, Math.max(0, Number(hours.value))),
         minutes: Math.min(59, Math.max(0, Number(minutes.value)))
       },
-      snooze: document.querySelector('.alarm [data-id="edit"] .switch').checked,
-      name: document.querySelector('.alarm [data-id="name"]').value
+      snooze: document.querySelector('.alarm [data-id="edit"] [data-id="snooze"]').checked,
+      once: document.querySelector('.alarm [data-id="edit"] [data-id="once"]').checked,
+      name: document.querySelector('.alarm [data-id="edit"] [data-id="name"]').value
     };
     const index = ids.indexOf(id);
     if (index === -1) {
@@ -264,6 +271,7 @@ alarm.toast = () => {
       };
     })(),
     snooze: false,
+    once: false,
     id: 'alarm-' + Math.random(),
     name: ''
   }, restart = false) => {
@@ -272,10 +280,11 @@ alarm.toast = () => {
     });
     hours.value = ('0' + o.time.hours).substr(-2);
     minutes.value = ('0' + o.time.minutes).substr(-2);
-    document.querySelector('.alarm [data-id="edit"] .switch').checked = o.snooze;
+    document.querySelector('.alarm [data-id="edit"] [data-id="snooze"]').checked = o.snooze;
+    document.querySelector('.alarm [data-id="edit"] [data-id="once"]').checked = o.once;
     document.querySelector('.alarm [data-id="edit"]').dataset.assign = o.id;
     document.querySelector('.alarm [data-id="edit"]').dataset.restart = restart;
-    document.querySelector('.alarm [data-id="name"]').value = o.name || '';
+    document.querySelector('.alarm [data-id="edit"] [data-id="name"]').value = o.name || '';
 
     document.body.dataset.alarm = 'edit';
   };

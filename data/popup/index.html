@@ -30,6 +30,7 @@
         <template>
           <div class="entry" hbox align="center" disabled=true>
             <span class="large" data-id="time">00:00</span>
+            <span class="small" data-id="once">once</span>
             <span class="small" data-id="date">Mon, 00 Aug</span>
             <input type="checkbox" class="switch">
             <input type="button" data-command="remove">
@@ -58,14 +59,21 @@
           <input type="checkbox" data-id="S" value="6">
           <input type="checkbox" data-id="S" value="0">
         </div>
-        <div flex="1">
+        <div flex="1" vbox pack=center>
           <table>
             <tr>
               <td><div>
-                <h1>Snooze</h1>
+                <span>Snooze</span>
                 <h3>5 minutes, 3 times</h3>
               </div></td>
-              <td align="right"><input type="checkbox" class="switch"></td>
+              <td align="right"><input type="checkbox" class="switch" data-id="snooze"></td>
+            </tr>
+            <tr>
+              <td><div>
+                <span>Once</span>
+                <h3>Do not repeat</h3>
+              </div></td>
+              <td align="right"><input type="checkbox" class="switch" data-id="once"></td>
             </tr>
           </table>
         </div>
