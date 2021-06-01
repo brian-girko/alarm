@@ -1,5 +1,7 @@
 'use strict';
 
+const isFirefox = /Firefox/.test(navigator.userAgent) || typeof InstallTrigger !== 'undefined';
+
 const audio = {};
 audio.cache = {};
 audio.play = (id, src, n = 5, volume = 0.8) => {
@@ -53,7 +55,7 @@ const alarms = {
   },
   fire({name}) {
     const set = (name, title, message = `Time's up`) => chrome.notifications.clear(name, () => {
-      chrome.notifications.create(name, {
+      const opts = {
         type: 'basic',
         iconUrl: 'data/icons/48.png',
         title,
@@ -65,7 +67,12 @@ const alarms = {
         }, {
           title: 'Snooze after 10 minutes'
         }]
-      });
+      };
+      if (isFirefox) {
+        delete opts.buttons;
+        delete opts.requireInteraction;
+      }
+      chrome.notifications.create(name, opts);
     });
 
     if (name.startsWith('timer-')) {
@@ -166,8 +173,13 @@ const silent = (id, callback = () => {}) => {
 };
 chrome.notifications.onClicked.addListener(id => silent(id));
 chrome.notifications.onClosed.addListener(id => silent(id));
-chrome.notifications.onShowSettings.addListener(id => silent(id));
-chrome.notifications.onPermissionLevelChanged.addListener(id => silent(id));
+
+if (chrome.notifications.onShowSettings) {
+  chrome.notifications.onShowSettings.addListener(id => silent(id));
+}
+if (chrome.notifications.onPermissionLevelChanged) {
+  chrome.notifications.onPermissionLevelChanged.addListener(id => silent(id));
+}
 chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
   silent(id, () => {
     buttonIndex += 1;
