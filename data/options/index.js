@@ -42,3 +42,45 @@ document.getElementById('reset').addEventListener('click', e => {
 document.getElementById('support').addEventListener('click', () => chrome.tabs.create({
   url: chrome.runtime.getManifest().homepage_url + '?rd=donate'
 }));
+// export
+document.getElementById('export').addEventListener('click', () => {
+  chrome.storage.local.get(null, prefs => {
+    const text = JSON.stringify(prefs, null, '\t');
+    const blob = new Blob([text], {type: 'application/json'});
+    const objectURL = URL.createObjectURL(blob);
+    Object.assign(document.createElement('a'), {
+      href: objectURL,
+      type: 'application/json',
+      download: 'alarm-preferences.json'
+    }).dispatchEvent(new MouseEvent('click'));
+    setTimeout(() => URL.revokeObjectURL(objectURL));
+  });
+});
+// import
+document.getElementById('import').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.style.display = 'none';
+  input.type = 'file';
+  input.accept = '.json';
+  input.acceptCharset = 'utf-8';
+
+  document.body.appendChild(input);
+  input.initialValue = input.value;
+  input.onchange = readFile;
+  input.click();
+
+  function readFile() {
+    if (input.value !== input.initialValue) {
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onloadend = event => {
+        input.remove();
+        const json = JSON.parse(event.target.result);
+        chrome.storage.local.clear(() => {
+          chrome.storage.local.set(json, () => chrome.runtime.reload());
+        });
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+  }
+});

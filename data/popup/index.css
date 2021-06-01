@@ -1,3 +1,7 @@
+:root {
+  --width: 400px;
+}
+
 @font-face {
   font-family: 'Open Sans';
   font-weight: 300;
@@ -35,7 +39,7 @@ body {
   margin: 0;
   color: var(--color);
   background-color: var(--bg-color);
-  width: 400px;
+  width: var(--width);
   height: 100vh;
   height: 600px;
 }
@@ -154,18 +158,21 @@ input.switch[type=checkbox]:checked::after {
 #content {
   overflow-x: hidden;
 }
+body[data-ready=true] #content {
+  transition: margin 200ms;
+}
 
 #content > div {
-  min-width: 100vw;
+  min-width: var(--width);
 }
 body[data-tab="alarm"] #content {
   margin-left: 0;
 }
 body[data-tab="stopwatch"] #content {
-  margin-left: -100vw;
+  margin-left: calc(-1 * var(--width));
 }
 body[data-tab="timer"] #content {
-  margin-left: -200vw;
+  margin-left: calc(-2 * var(--width));
 }
 .alarm input[type=checkbox] {
   visibility: hidden;
@@ -291,7 +298,7 @@ body[data-alarm="edit"] div[data-id="content"] {
   display: flex;
   justify-content: space-around;
   align-items: unset;
-  width: 100vw;
+  width: var(--width);
 }
 input[type="button"][data-command="save"],
 input[type="button"][data-command="resume"],
