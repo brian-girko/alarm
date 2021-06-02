@@ -2,23 +2,31 @@
 <html>
 <head>
   <title>Options Page :: Alarm, Timer and Stopwatch</title>
+  <meta charset="utf-8">
+  <link rel="stylesheet" type="text/css" href="index.css">
 </head>
 <body>
 
   </div>
   <form id="save">
-    <div style="display: grid; grid-template-columns: 1fr 80px;">
+    <div class="cols">
       <label for="volume-timer">Timer sound level (0 - 100)</label>
       <input id="volume-timer" type="number" min="0" max="100">
       <label for="volume-alarm">Alarm sound level (0 - 100)</label>
       <input id="volume-alarm" type="number" min="0" max="100">
       <label for="volume-misc">Misc sound level (0 - 100)</label>
       <input id="volume-misc" type="number" min="0" max="100">
+      <label for="mode">Open interface in</label>
+      <select id="mode">
+        <option value="bp">Browser Popup</option>
+        <option value="pp">Standalone Window</option>
+      </select>
     </div>
+
+
     <p>
       <input type="button" id="support" value="Support Development">
-      <input type="button" id="reset" value="Reset">
-      <input type="submit" value="Save">
+      <input type="button" id="reset" value="Reset"> - <input type="submit" value="Save">
       <span id="toast"></span>
     </p>
   </form>

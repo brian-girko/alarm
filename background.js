@@ -227,6 +227,44 @@ const onMessage = (request, sender, respose) => {
 };
 chrome.runtime.onMessage.addListener(onMessage);
 
+const onCommand = command => {
+  if (command === 'open-interface') {
+    chrome.storage.local.get({
+      width: 400,
+      height: 600,
+      left: screen.availLeft + Math.round((screen.availWidth - 400) / 2),
+      top: screen.availTop + Math.round((screen.availHeight - 600) / 2)
+    }, prefs => chrome.windows.create({
+      url: 'data/popup/index.html?mode=pp',
+      width: prefs.width,
+      height: prefs.height,
+      left: prefs.left,
+      top: prefs.top,
+      type: 'popup'
+    }));
+  }
+};
+chrome.commands.onCommand.addListener(onCommand);
+chrome.browserAction.onClicked.addListener(() => onCommand('open-interface'));
+
+
+chrome.storage.onChanged.addListener(ps => {
+  if (ps.mode) {
+    chrome.browserAction.setPopup({
+      popup: ps.mode.newValue === 'pp' ? '' : 'data/popup/index.html'
+    });
+  }
+});
+{
+  const once = () => chrome.storage.local.get({
+    mode: 'bp'
+  }, prefs => chrome.browserAction.setPopup({
+    popup: prefs.mode === 'pp' ? '' : 'data/popup/index.html'
+  }));
+  chrome.runtime.onInstalled.addListener(once);
+  chrome.runtime.onStartup.addListener(once);
+}
+
 /* FAQs & Feedback */
 {
   const {management, runtime: {onInstalled, setUninstallURL, getManifest}, storage, tabs} = chrome;

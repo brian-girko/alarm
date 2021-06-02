@@ -5,11 +5,13 @@ const toast = document.getElementById('toast');
 chrome.storage.local.get({
   'volume-timer': 0.8,
   'volume-alarm': 0.8,
-  'volume-misc': 0.8
+  'volume-misc': 0.8,
+  'mode': 'bp'
 }, prefs => {
   document.getElementById('volume-timer').value = prefs['volume-timer'] * 100;
   document.getElementById('volume-alarm').value = prefs['volume-alarm'] * 100;
   document.getElementById('volume-misc').value = prefs['volume-misc'] * 100;
+  document.getElementById('mode').value = prefs.mode;
 });
 
 document.getElementById('save').addEventListener('submit', e => {
@@ -17,7 +19,8 @@ document.getElementById('save').addEventListener('submit', e => {
   chrome.storage.local.set({
     'volume-timer': document.getElementById('volume-timer').value / 100,
     'volume-alarm': document.getElementById('volume-alarm').value / 100,
-    'volume-misc': document.getElementById('volume-misc').value / 100
+    'volume-misc': document.getElementById('volume-misc').value / 100,
+    'mode': document.getElementById('mode').value
   }, () => {
     toast.textContent = 'Options saved!';
     window.setTimeout(() => toast.textContent = '', 750);

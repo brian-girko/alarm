@@ -34,5 +34,10 @@
   "options_ui": {
     "page": "data/options/index.html",
     "chrome_style": true
+  },
+  "commands": {
+    "open-interface": {
+      "description": "Open the interface in a window"
+    }
   }
 }

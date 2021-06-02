@@ -1,15 +1,16 @@
 /* globals timer, stopwatch, alarm */
 'use strict';
 
+const args = new URLSearchParams(location.search);
+document.documentElement.classList.add(args.get('mode'));
+
 // tabs
 document.getElementById('tabs').addEventListener('change', e => {
   const {id} = e.target;
   document.body.dataset.tab = id;
   localStorage.setItem('alarm-tab', id);
-});
-document.getElementById(localStorage.getItem('alarm-tab') || 'alarm').click();
-window.addEventListener('load', () => {
-  document.body.dataset.ready = true;
+
+  console.log(e.target);
 });
 
 // plus button
@@ -55,4 +56,11 @@ document.addEventListener('click', e => {
 // close all notifications
 chrome.runtime.sendMessage({
   method: 'remove-all-notifications'
+});
+
+// startup
+document.body.dataset.tab = localStorage.getItem('alarm-tab') || 'alarm';
+document.getElementById(document.body.dataset.tab).click();
+window.addEventListener('load', () => {
+  document.body.dataset.ready = true;
 });

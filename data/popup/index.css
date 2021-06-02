@@ -21,6 +21,11 @@
   input[type=checkbox] {
     -moz-appearance: initial;
   }
+  input[type=number] {
+    box-sizing: border-box;
+    width: 100%;
+    -moz-appearance: textfield;
+  }
 }
 
 :root {
@@ -38,15 +43,21 @@
   --font-large: 28px;
   --width: 400px;
 }
+html.pp {
+  --width: 100vw;
+}
 
 body {
   margin: 0;
   color: var(--color);
   background-color: var(--bg-color);
   width: var(--width);
-  height: 100vh;
   height: 600px;
 }
+html.pp body {
+  height: 100vh;
+}
+
 input,
 body,
 h1 {
