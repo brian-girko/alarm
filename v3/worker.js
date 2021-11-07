@@ -25,8 +25,8 @@ const notifications = {
       args.set('position', prefs['notify-position']);
 
       const p = {
-        width: 400,
-        height: 200,
+        width: 580,
+        height: 250,
         type: 'popup',
         url: 'data/notify/index.html?' + args.toString()
       };
@@ -42,7 +42,14 @@ const notifications = {
 
 const alarms = {
   create(name, info) {
-    chrome.alarms.create(name, info);
+    chrome.alarms.getAll(as => {
+      const id = name.split(':')[0];
+      const names = as.filter(a => a.name.indexOf(id) !== -1).map(a => a.name);
+      for (const name of names) {
+        chrome.alarms.clear(name);
+      }
+      chrome.alarms.create(name, info);
+    });
 
     // const d = info.when - Date.now();
     // if (d < 60 * 1000) {
@@ -106,6 +113,7 @@ const alarms = {
     else if (name.startsWith('audio-')) {
       const id = name.replace('audio-', '').split('/')[0];
       chrome.storage.local.get({
+        'alarms': [],
         'src-misc': 'data/sounds/5.mp3',
         'repeats-misc': 5,
         'volume-misc': 0.8
@@ -117,7 +125,8 @@ const alarms = {
         else if (id.startsWith('timer-')) {
           title = 'Timer';
         }
-        set(id, title, prefs['src-misc'], prefs['repeats-misc'], prefs['volume-misc']);
+        const o = prefs.alarms.filter(a => a.id === id).shift();
+        set(id, title, prefs['src-misc'], prefs['repeats-misc'], prefs['volume-misc'], o?.name);
       });
     }
   },
@@ -248,12 +257,12 @@ const onCommand = command => {
   }
 };
 chrome.commands.onCommand.addListener(onCommand);
-chrome.action.onClicked.addListener(() => onCommand('open-interface'));
+chrome.browserAction.onClicked.addListener(() => onCommand('open-interface'));
 
 
 chrome.storage.onChanged.addListener(ps => {
   if (ps.mode) {
-    chrome.action.setPopup({
+    chrome.browserAction.setPopup({
       popup: ps.mode.newValue === 'pp' ? '' : 'data/popup/index.html'
     });
   }
@@ -261,7 +270,7 @@ chrome.storage.onChanged.addListener(ps => {
 {
   const once = () => chrome.storage.local.get({
     mode: 'bp'
-  }, prefs => chrome.action.setPopup({
+  }, prefs => chrome.browserAction.setPopup({
     popup: prefs.mode === 'pp' ? '' : 'data/popup/index.html'
   }));
   chrome.runtime.onInstalled.addListener(once);

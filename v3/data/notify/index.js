@@ -2,10 +2,10 @@ const args = new URLSearchParams(location.search);
 
 document.querySelector('h1').textContent = args.get('title');
 document.querySelector('p').textContent = args.get('message');
-if (args.get('name').startsWith('alarm')) {
+if (args.get('name').indexOf('alarm') !== -1) {
   document.querySelector('img').src = 'imgs/alarm.svg';
 }
-else if (args.get('name').startsWith('timer')) {
+else if (args.get('name').indexOf('timer') !== -1) {
   document.querySelector('img').src = 'imgs/timer.svg';
 }
 else {
@@ -34,10 +34,19 @@ document.getElementById('snooze').onclick = () => {
     info: {
       when: Date.now() + buttonIndex * 5 * 60 * 1000
     }
-  }, () => window.close());
+  }, () => setTimeout(() => window.close(), 100));
 };
 
 document.getElementById('done').onclick = () => window.close();
+
+document.getElementById('clean').onclick = e => {
+  const v = e.target.value;
+  e.target.value = 'Clearing...';
+  chrome.runtime.sendMessage({
+    method: 'clear-alarm',
+    name: args.get('name')
+  }, () => setTimeout(() => e.target.value = v, 500));
+};
 
 // audio
 const audio = {};
@@ -59,7 +68,6 @@ audio.play = (id, src, n = 5, volume = 0.8) => {
   audio.cache[id] = e;
   e.src = '/' + src;
   e.play();
-  console.log(e);
 };
 audio.stop = id => {
   const e = audio.cache[id];
@@ -74,7 +82,7 @@ audio.play(args.get('name'), args.get('sound'), Number(args.get('repeats'), Numb
 // bring to front
 window.onblur = () => setTimeout(() => chrome.runtime.sendMessage({
   method: 'bring-to-front'
-}), 100);
+}, () => chrome.runtime.lastError), 100);
 
 // messaging
 chrome.runtime.onMessage.addListener((request, sender, resposne) => {

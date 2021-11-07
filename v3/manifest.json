@@ -1,6 +1,6 @@
 {
-  "manifest_version": 3,
-  "version": "0.2.0",
+  "manifest_version": 2,
+  "version": "0.2.1",
   "name": "Alarm, Timer and Stopwatch",
   "description": "__MSG_description__",
   "default_locale": "en",
@@ -12,7 +12,8 @@
   "offline_enabled": true,
   "homepage_url": "https://add0n.com/alarm.html",
   "background": {
-    "service_worker": "worker.js"
+    "persistent": false,
+    "scripts": ["worker.js"]
   },
   "icons": {
     "16": "data/icons/16.png",
@@ -23,16 +24,13 @@
     "256": "data/icons/256.png",
     "512": "data/icons/512.png"
   },
-  "action": {
+  "browser_action": {
     "default_popup": "data/popup/index.html"
   },
   "options_ui": {
     "page": "data/options/index.html"
   },
   "commands": {
-    "_execute_action": {
-      "description": "Press the action button"
-    },
     "open-interface": {
       "description": "Open the interface in a window"
     }

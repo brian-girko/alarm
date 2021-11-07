@@ -7,6 +7,13 @@ const hours = document.querySelector('.timer input[data-id="hours"]');
 const minutes = document.querySelector('.timer input[data-id="minutes"]');
 const seconds = document.querySelector('.timer input[data-id="seconds"]');
 
+document.querySelector('.timer input[data-command="start"]').addEventListener('click', e => {
+  if (e.isTrusted) {
+    localStorage.setItem('last-used-hours', hours.value);
+    localStorage.setItem('last-used-minutes', minutes.value);
+    localStorage.setItem('last-used-seconds', seconds.value);
+  }
+});
 
 timer.ms2time = duration => ({
   seconds: Math.floor((duration / 1000) % 60),
@@ -25,9 +32,9 @@ timer.tick = (once = false) => {
     minutes.value = timer.format(o.minutes);
     seconds.value = timer.format(o.seconds);
 
-    window.clearTimeout(timer.id);
+    clearTimeout(timer.id);
     if (once !== true) {
-      timer.id = window.setTimeout(timer.tick, 1000);
+      timer.id = setTimeout(timer.tick, 1000);
     }
   }
   else {
@@ -40,11 +47,8 @@ timer.start = () => {
   minutes.value = timer.format(Math.min(59, Math.max(0, minutes.value)));
   seconds.value = timer.format(Math.min(59, Math.max(0, seconds.value)));
 
-  localStorage.setItem('last-used-hours', hours.value);
-  localStorage.setItem('last-used-minutes', minutes.value);
-  localStorage.setItem('last-used-seconds', seconds.value);
-
   const when = ((Number(hours.value) * 60 + Number(minutes.value)) * 60 + Number(seconds.value)) * 1000;
+
   if (when) {
     timer.resume(Date.now() + when, 1000);
   }
@@ -60,7 +64,7 @@ timer.default = () => {
 };
 
 timer.pause = (reset = false) => {
-  window.clearTimeout(timer.id);
+  clearTimeout(timer.id);
   chrome.runtime.sendMessage({
     method: 'clear-alarm',
     name: 'timer-1'
@@ -80,9 +84,11 @@ timer.pause = (reset = false) => {
 timer.resume = (when = timer.when, delay = 0, post = true) => {
   timer.when = when;
 
-  window.clearTimeout(timer.id);
+  clearTimeout(timer.id);
   if (delay >= 0) {
     if (post) {
+      localStorage.removeItem('timer-when');
+
       chrome.runtime.sendMessage({
         method: 'set-alarm',
         name: 'timer-1',
@@ -91,7 +97,7 @@ timer.resume = (when = timer.when, delay = 0, post = true) => {
         }
       });
     }
-    timer.id = window.setTimeout(timer.tick, delay);
+    timer.id = setTimeout(timer.tick, delay);
     document.body.dataset.timer = 'working';
   }
   else {
@@ -106,7 +112,6 @@ chrome.runtime.sendMessage({
   method: 'get-alarm',
   name: 'timer-1'
 }, alarm => {
-  console.log(alarm);
   if (alarm) {
     if (alarm.scheduledTime > Date.now()) {
       return timer.resume(alarm.scheduledTime, 0, false);

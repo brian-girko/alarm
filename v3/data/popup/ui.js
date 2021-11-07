@@ -9,8 +9,6 @@ document.getElementById('tabs').addEventListener('change', e => {
   const {id} = e.target;
   document.body.dataset.tab = id;
   localStorage.setItem('alarm-tab', id);
-
-  console.log(e.target);
 });
 
 // plus button

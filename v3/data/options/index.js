@@ -10,7 +10,6 @@ chrome.storage.local.get({
   'notify-position': 'center',
   'notify-on-top': false
 }, prefs => {
-  console.log(prefs);
   document.getElementById('volume-timer').value = prefs['volume-timer'] * 100;
   document.getElementById('volume-alarm').value = prefs['volume-alarm'] * 100;
   document.getElementById('volume-misc').value = prefs['volume-misc'] * 100;

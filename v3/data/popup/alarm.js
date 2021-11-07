@@ -70,19 +70,29 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('change
 
 alarm.convert = (time, ds) => {
   const d = new Date(); // 0 - 6 Sunday is 0, Monday is 1, and so on.
+
   d.setSeconds(0);
   const day = d.getDay();
   const days = [...ds]; // clone
   if (days.length === 0) {
     days.push(d.getDay());
   }
+
   return days.map(a => (a - day)).map(n => {
     const o = new Date();
+    const of1 = o.getTimezoneOffset();
+
     o.setDate(d.getDate() + n);
     o.setHours(time.hours, time.minutes, 0);
-    if (o.getTime() < Date.now()) {
+
+    // consider timezone changes
+    const of2 = o.getTimezoneOffset();
+    o.setTime(o.getTime() + (of1 - of2) * 60 * 1000);
+
+    if (o.getTime() - Date.now() < 0) {
       o.setDate(o.getDate() + 7);
     }
+
     return o.getTime();
   }).filter((n, i, l) => l.indexOf(n) === i).sort();
 };
@@ -203,6 +213,7 @@ alarm.toast = () => {
         hours: Number(hours.value),
         minutes: Number(minutes.value)
       }, days.map(e => e.value));
+
       const time = times.shift();
       const n = new Date();
       const d = new Date(time);
@@ -242,6 +253,7 @@ alarm.toast = () => {
       once: document.querySelector('.alarm [data-id="edit"] [data-id="once"]').checked,
       name: document.querySelector('.alarm [data-id="edit"] [data-id="name"]').value
     };
+
     const index = ids.indexOf(id);
     if (index === -1) {
       prefs.alarms.push(a);
@@ -315,7 +327,7 @@ alarm.remove = target => {
 // edit from entry
 document.querySelector('.alarm div[data-id="content"]').addEventListener('dblclick', ({target}) => {
   const entry = target.closest('.entry');
-  if (entry) {
+  if (entry && target.classList.contains('switch') === false) {
     const active = entry.querySelector('.switch').checked;
     alarm.edit(entry.o, active);
   }
