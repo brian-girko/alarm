@@ -36,7 +36,7 @@ const notifications = {
   kill() {
     chrome.runtime.sendMessage({
       method: 'remove-all-notifications'
-    });
+    }, () => chrome.runtime.lastError);
   }
 };
 
