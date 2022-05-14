@@ -7,6 +7,14 @@ const hours = document.querySelector('.timer input[data-id="hours"]');
 const minutes = document.querySelector('.timer input[data-id="minutes"]');
 const seconds = document.querySelector('.timer input[data-id="seconds"]');
 
+// add leading zeros and force range
+const fix = (e, min = 0, max = 23) => {
+  e.target.value = Math.max(min, Math.min(max, e.target.valueAsNumber)).toString().padStart(2, '0');
+};
+hours.addEventListener('change', e => fix(e, 0, 99));
+minutes.addEventListener('change', e => fix(e, 0, 59));
+seconds.addEventListener('change', e => fix(e, 0, 59));
+
 document.querySelector('.timer input[data-command="start"]').addEventListener('click', e => {
   if (e.isTrusted) {
     localStorage.setItem('last-used-hours', hours.value);
@@ -58,9 +66,9 @@ timer.start = () => {
 };
 
 timer.default = () => {
-  hours.value = localStorage.getItem('last-used-hours') || '00';
-  minutes.value = localStorage.getItem('last-used-minutes') || '30';
-  seconds.value = localStorage.getItem('last-used-seconds') || '00';
+  hours.value = (localStorage.getItem('last-used-hours') || '00').padStart(2, '0');
+  minutes.value = (localStorage.getItem('last-used-minutes') || '30').padStart(2, '0');
+  seconds.value = (localStorage.getItem('last-used-seconds') || '00').padStart(2, '0');
 };
 
 timer.pause = (reset = false) => {

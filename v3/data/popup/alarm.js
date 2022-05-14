@@ -8,7 +8,7 @@ alarm.format = (d, time = false) => {
     0: 'Sun',
     1: 'Mon',
     2: 'Tue',
-    3: 'Wen',
+    3: 'Wed',
     4: 'Thu',
     5: 'Fri',
     6: 'Sat'
@@ -102,6 +102,8 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
 }, alarms => chrome.storage.local.get({
   'alarms': []
 }, prefs => {
+  console.log(alarms, prefs);
+
   const t = document.querySelector('.alarm template');
   const entries = document.querySelector('.alarm div[data-id="entries"]');
 
@@ -201,7 +203,7 @@ alarm.toast = () => {
         0: 'Sun',
         1: 'Mon',
         2: 'Tue',
-        3: 'Wen',
+        3: 'Wed',
         4: 'Thu',
         5: 'Fri',
         6: 'Sat'
@@ -234,6 +236,13 @@ alarm.toast = () => {
   };
   edit.addEventListener('change', onchange);
   edit.addEventListener('input', onchange);
+
+  // add leading zeros and force range
+  const fix = (e, min = 0, max = 23) => {
+    e.target.value = Math.max(min, Math.min(max, e.target.valueAsNumber)).toString().padStart(2, '0');
+  };
+  hours.addEventListener('change', e => fix(e, 9, 23));
+  minutes.addEventListener('change', e => fix(e, 9, 59));
 
   alarm.save = () => chrome.storage.local.get({
     alarms: []

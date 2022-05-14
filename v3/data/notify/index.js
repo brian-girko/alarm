@@ -23,7 +23,7 @@ chrome.runtime.sendMessage({
     height: window.outerHeight
   },
   position: args.get('position')
-});
+}, () => chrome.runtime.lastError);
 
 document.getElementById('snooze').onclick = () => {
   const buttonIndex = document.getElementById('range').selectedIndex + 1;

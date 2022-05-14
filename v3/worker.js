@@ -167,6 +167,23 @@ const alarms = {
 alarms.cache = {};
 chrome.alarms.onAlarm.addListener(alarms.fire);
 
+/* handling outdated alarms */
+chrome.idle.onStateChanged.addListener(state => {
+  if (state === 'active') {
+    const now = Date.now();
+    chrome.alarms.getAll().then(os => {
+      for (const o of os) {
+        if (o.scheduledTime < now) {
+          chrome.alarms.create(o.name, {
+            when: now + 1000,
+            periodInMinutes: o.periodInMinutes
+          });
+        }
+      }
+    });
+  }
+});
+
 const onMessage = (request, sender, respose) => {
   if (request.method === 'set-alarm') {
     alarms.create(request.name, request.info);
@@ -257,12 +274,12 @@ const onCommand = command => {
   }
 };
 chrome.commands.onCommand.addListener(onCommand);
-chrome.browserAction.onClicked.addListener(() => onCommand('open-interface'));
+chrome.action.onClicked.addListener(() => onCommand('open-interface'));
 
 
 chrome.storage.onChanged.addListener(ps => {
   if (ps.mode) {
-    chrome.browserAction.setPopup({
+    chrome.action.setPopup({
       popup: ps.mode.newValue === 'pp' ? '' : 'data/popup/index.html'
     });
   }
@@ -270,7 +287,7 @@ chrome.storage.onChanged.addListener(ps => {
 {
   const once = () => chrome.storage.local.get({
     mode: 'bp'
-  }, prefs => chrome.browserAction.setPopup({
+  }, prefs => chrome.action.setPopup({
     popup: prefs.mode === 'pp' ? '' : 'data/popup/index.html'
   }));
   chrome.runtime.onInstalled.addListener(once);
