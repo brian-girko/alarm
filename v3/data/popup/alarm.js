@@ -241,8 +241,8 @@ alarm.toast = () => {
   const fix = (e, min = 0, max = 23) => {
     e.target.value = Math.max(min, Math.min(max, e.target.valueAsNumber)).toString().padStart(2, '0');
   };
-  hours.addEventListener('change', e => fix(e, 9, 23));
-  minutes.addEventListener('change', e => fix(e, 9, 59));
+  hours.addEventListener('change', e => fix(e, 0, 23));
+  minutes.addEventListener('change', e => fix(e, 0, 59));
 
   alarm.save = () => chrome.storage.local.get({
     alarms: []
