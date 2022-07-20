@@ -102,8 +102,6 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
 }, alarms => chrome.storage.local.get({
   'alarms': []
 }, prefs => {
-  console.log(alarms, prefs);
-
   const t = document.querySelector('.alarm template');
   const entries = document.querySelector('.alarm div[data-id="entries"]');
 
