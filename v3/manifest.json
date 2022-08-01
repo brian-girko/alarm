@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "version": "0.2.4",
+  "version": "0.2.5",
   "name": "Alarm, Timer and Stopwatch",
   "description": "__MSG_description__",
   "default_locale": "en",
   "permissions": [
     "storage",
     "alarms",
-    "idle"
+    "idle",
+    "contextMenus"
   ],
   "offline_enabled": true,
   "homepage_url": "https://add0n.com/alarm.html",

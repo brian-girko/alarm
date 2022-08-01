@@ -30,6 +30,21 @@ alarm.format = (d, time = false) => {
   return day + (time ? ' ' + ('0' + d.getHours()).substr(-2) + ':' + ('0' + d.getMinutes()).substr(-2) : '');
 };
 
+// helper function to check all days or uncheck all days based on once button
+document.querySelector('.alarm [data-id="edit"] [data-id="once"]').onclick = e => {
+  const days = [...document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]:checked')];
+  if (e.target.checked === false && days.length === 0) {
+    for (const e of document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]')) {
+      e.checked = true;
+    }
+  }
+  if (e.target.checked) {
+    for (const e of document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]')) {
+      e.checked = false;
+    }
+  }
+};
+
 document.querySelector('.alarm div[data-id="content"]').addEventListener('change', ({target}) => {
   const entry = target.closest('.entry');
   if (entry) {

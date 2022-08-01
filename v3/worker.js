@@ -10,7 +10,7 @@ const notifications = {
       c();
     });
   },
-  async create(name, opts) {
+  create(name, opts) {
     const args = new URLSearchParams();
     args.set('name', name);
     args.set('title', opts.title);
@@ -41,36 +41,6 @@ const notifications = {
 };
 
 const alarms = {
-  create(name, info) {
-    chrome.alarms.getAll(as => {
-      const id = name.split(':')[0];
-      const names = as.filter(a => a.name.indexOf(id) !== -1).map(a => a.name);
-      for (const name of names) {
-        chrome.alarms.clear(name);
-      }
-      chrome.alarms.create(name, info);
-    });
-
-    // const d = info.when - Date.now();
-    // if (d < 60 * 1000) {
-    //   if (alarms.cache[name]) {
-    //     clearTimeout(alarms.cache[name].id);
-    //   }
-    //   alarms.cache[name] = {
-    //     id: setTimeout(() => {
-    //       delete alarms.cache[name];
-    //       alarms.fire({
-    //         name,
-    //         scheduledTime: info.when
-    //       });
-    //     }, d),
-    //     when: info.when
-    //   };
-    // }
-    // else {
-    //   chrome.alarms.create(name, info);
-    // }
-  },
   fire({name}) {
     const set = (name, title, sound, repeats, volume, message = `Time's up`) => notifications.clear(name, () => {
       notifications.create(name, {
@@ -130,42 +100,122 @@ const alarms = {
       });
     }
   },
-  clear(name, callback = () => {}) {
-    if (alarms.cache[name]) {
-      clearTimeout(alarms.cache[name].id);
-      delete alarms.cache[name];
-      callback();
-    }
-    else {
-      chrome.alarms.clear(name, callback);
-    }
-  },
   get(name, c) {
-    if (alarms.cache[name]) {
-      c({
-        name,
-        scheduledTime: alarms.cache[name].when
-      });
-    }
-    else {
-      chrome.alarms.get(name, c);
-    }
+    chrome.alarms.get(name, c);
   },
   getAll(c) {
-    const locals = Object.entries(alarms.cache).map(([name, {when}]) => {
-      return {
-        name,
-        scheduledTime: when
-      };
-    });
-    chrome.alarms.getAll(alarms => c([
-      ...locals,
-      ...alarms
-    ]));
+    chrome.alarms.getAll(c);
   }
 };
-alarms.cache = {};
-chrome.alarms.onAlarm.addListener(alarms.fire);
+
+// create or clear
+{
+  const cache = {
+    create: new Map(),
+    clear: new Set()
+  };
+  const step = () => {
+    clearTimeout(step.id);
+    step.id = setTimeout(() => {
+      alarms.getAll(as => {
+        chrome.storage.local.get({
+          'alarms-storage': {}
+        }, prefs => {
+          // clear old alarms
+          const keys = [
+            ...cache.clear.keys(),
+            ...cache.create.keys()
+          ].map(s => s.split(':')[0]);
+
+          for (const a of as.filter(a => keys.some(key => a.name.includes(key)))) {
+            cache.clear.add(a.name);
+          }
+
+          // clear alarms
+          for (const name of cache.clear) {
+            if (cache.create.has(name) === false) {
+              chrome.alarms.clear(name);
+              delete prefs['alarms-storage'][name];
+            }
+          }
+          cache.clear.clear();
+          // set new alarms
+          for (const [name, info] of cache.create) {
+            chrome.alarms.create(name, info);
+            prefs['alarms-storage'][name] = info;
+          }
+          cache.create.clear();
+          chrome.storage.local.set(prefs);
+        });
+      });
+    }, 100);
+  };
+
+  alarms.create = (name, info) => {
+    cache.create.set(name, info);
+    cache.clear.delete(name);
+    step();
+  };
+  alarms.clear = (name, callback = () => {}) => {
+    cache.clear.add(name);
+    cache.create.delete(name);
+    callback();
+    step();
+  };
+
+  alarms.fire = new Proxy(alarms.fire, {
+    apply(target, self, args) {
+      const o = args[0];
+      if (!o.periodInMinutes) {
+        chrome.storage.local.get({
+          'alarms-storage': {}
+        }, prefs => {
+          delete prefs['alarms-storage'][o.name];
+          chrome.storage.local.set(prefs);
+        });
+      }
+
+      return Reflect.apply(target, self, args);
+    }
+  });
+}
+{
+  const once = () => chrome.storage.local.get({
+    'alarms-storage': {}
+  }, async prefs => {
+    const now = Date.now();
+    let modified = false;
+    for (const [name, info] of Object.entries(prefs['alarms-storage'])) {
+      if (info.when && info.when < now) {
+        if (info.periodInMinutes) {
+          while (info.when < now) {
+            info.when += info.periodInMinutes * 60 * 1000;
+          }
+        }
+        else {
+          delete prefs['alarms-storage'][name];
+        }
+        modified = true;
+      }
+      if (name in prefs['alarms-storage']) {
+        const o = await chrome.alarms.get(name);
+        if (!o) {
+          chrome.alarms.create(name, info);
+          console.info('Force Creating a new Alarm', name, info);
+        }
+      }
+    }
+    if (modified) {
+      chrome.storage.local.set(prefs);
+    }
+  });
+  chrome.runtime.onStartup.addListener(once);
+  chrome.runtime.onInstalled.addListener(once);
+}
+
+chrome.alarms.onAlarm.addListener(a => {
+  alarms.fire(a);
+});
 
 /* handling outdated alarms */
 chrome.idle.onStateChanged.addListener(state => {
@@ -174,7 +224,7 @@ chrome.idle.onStateChanged.addListener(state => {
     chrome.alarms.getAll().then(os => {
       for (const o of os) {
         if (o.scheduledTime < now) {
-          chrome.alarms.create(o.name, {
+          alarms.create(o.name, {
             when: now + 1000,
             periodInMinutes: o.periodInMinutes
           });
@@ -188,15 +238,6 @@ const onMessage = (request, sender, respose) => {
   if (request.method === 'set-alarm') {
     alarms.create(request.name, request.info);
   }
-  else if (request.method === 'clear-alarm') {
-    request.name = request.name.split(':')[0];
-    alarms.getAll(as => {
-      as = as.filter(a => a.name.indexOf(request.name) !== -1);
-      as.forEach(a => {
-        alarms.clear(a.name);
-      });
-    });
-  }
   else if (request.method === 'get-alarm') {
     alarms.get(request.name, respose);
     return true;
@@ -205,16 +246,18 @@ const onMessage = (request, sender, respose) => {
     alarms.getAll(respose);
     return true;
   }
+  else if (request.method === 'clear-alarm') {
+    alarms.clear(request.name);
+  }
   else if (request.method === 'batch') {
-    const sets = request.jobs.filter(j => j.method === 'set-alarm').map(j => j.name);
-    const clears = request.jobs.filter(j => j.method === 'clear-alarm').filter(j => sets.indexOf(j.name) === -1);
-    for (const job of clears) {
-      onMessage({
-        method: 'clear-alarm',
-        name: job.name
-      });
+    for (const job of request.jobs) {
+      if (job.method === 'clear-alarm') {
+        alarms.clear(job.name);
+      }
+      else if (job.method === 'set-alarm') {
+        alarms.create(job.name, job.info);
+      }
     }
-    request.jobs.filter(j => j.method === 'set-alarm').forEach(j => alarms.create(j.name, j.info));
   }
   else if (request.method === 'remove-all-notifications') {
     notifications.kill();
@@ -293,6 +336,38 @@ chrome.storage.onChanged.addListener(ps => {
   chrome.runtime.onInstalled.addListener(once);
   chrome.runtime.onStartup.addListener(once);
 }
+
+{
+  const once = () => {
+    chrome.contextMenus.create({
+      id: 'remove-all-alarms',
+      title: 'Remove all Alarms and Timers',
+      contexts: ['action']
+    });
+    chrome.contextMenus.create({
+      id: 'remove-all-notifications',
+      title: 'Remove all Notifications',
+      contexts: ['action']
+    });
+  };
+  chrome.runtime.onInstalled.addListener(once);
+  chrome.runtime.onStartup.addListener(once);
+}
+chrome.contextMenus.onClicked.addListener(info => {
+  if (info.menuItemId === 'remove-all-alarms') {
+    alarms.getAll(as => {
+      for (const a of as) {
+        chrome.alarms.clear(a.name);
+      }
+    });
+    chrome.storage.local.set({
+      'alarms-storage': {}
+    });
+  }
+  else if (info.menuItemId === 'remove-all-notifications') {
+    notifications.kill();
+  }
+});
 
 /* FAQs & Feedback */
 {
