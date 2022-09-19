@@ -4,7 +4,7 @@ const stopwatch = {};
 window.stopwatch = stopwatch;
 
 stopwatch.ms2time = duration => ({
-  milliseconds: parseInt((duration % 1000) / 100),
+  milliseconds: parseInt((duration % 1000) / 10),
   seconds: Math.floor((duration / 1000) % 60),
   minutes: Math.floor((duration / (1000 * 60)) % 60),
   hours: Math.floor((duration / (1000 * 60 * 60)) % 24)
@@ -45,6 +45,7 @@ stopwatch.lap = (d = Date.now() - stopwatch.when, record = true) => {
   tr.appendChild(two);
   {
     const o = stopwatch.ms2time(d - stopwatch.lastlap);
+
     const three = document.createElement('td');
     three.textContent = stopwatch.format(o);
     tr.appendChild(three);
@@ -84,7 +85,7 @@ stopwatch.resume = () => {
     e.textContent = stopwatch.format(o);
     window.clearTimeout(stopwatch.id);
     if (once !== true) {
-      stopwatch.id = window.setTimeout(stopwatch.step, 385);
+      stopwatch.id = window.setTimeout(stopwatch.step, 250);
       document.body.dataset.stopwatch = 'working';
     }
   };
