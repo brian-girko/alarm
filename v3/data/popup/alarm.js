@@ -50,7 +50,7 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('change
   if (entry) {
     const jobs = [];
     entry.setAttribute('disabled', target.checked ? false : true);
-    alarm.toast();
+
     chrome.runtime.sendMessage({
       method: 'get-alarms'
     }, alarms => {
@@ -172,29 +172,32 @@ alarm.ms2time = duration => ({
 });
 
 alarm.toast = () => {
-  const h1 = document.querySelector('.alarm [data-id="toast"] h1');
-  const h3 = document.querySelector('.alarm [data-id="toast"] h3');
-  const times = [];
-  [...document.querySelectorAll('.alarm .entry[disabled=false]')].forEach(entry => {
-    times.push(...entry.times);
-  });
-  if (times.length) {
-    times.sort();
-    const time = Date.now();
-    const delays = times.map(d => d - time);
-    const o = alarm.ms2time(delays[0]);
-    h1.textContent = `Next in ${o.days ? o.days + ' days ' : ''}${o.hours} hours ${o.minutes} minutes`;
-    h3.textContent = alarm.format(new Date(times[0]), true);
-  }
-  else {
-    if (document.querySelector('.entry')) {
-      h1.textContent = 'All alarms are off';
+  chrome.runtime.sendMessage({
+    method: 'get-alarms'
+  }, alarms => {
+    const times = alarms.map(o => o.scheduledTime);
+
+    const h1 = document.querySelector('.alarm [data-id="toast"] h1');
+    const h3 = document.querySelector('.alarm [data-id="toast"] h3');
+
+    if (times.length) {
+      times.sort();
+      const time = Date.now();
+      const delays = times.map(d => d - time);
+      const o = alarm.ms2time(delays[0]);
+      h1.textContent = `Next in ${o.days ? o.days + ' days ' : ''}${o.hours} hours ${o.minutes} minutes`;
+      h3.textContent = alarm.format(new Date(times[0]), true);
     }
     else {
-      h1.textContent = 'No alarm! Use plus button to create new ones';
+      if (document.querySelector('.entry')) {
+        h1.textContent = 'All alarms are off';
+      }
+      else {
+        h1.textContent = 'No alarm! Use plus button to create new ones';
+      }
+      h3.textContent = '';
     }
-    h3.textContent = '';
-  }
+  });
 };
 
 /* edit */
@@ -341,7 +344,7 @@ alarm.remove = target => {
     }, prefs => {
       chrome.storage.local.set({
         alarms: prefs.alarms.filter(a => a.id.startsWith(entry.dataset.id) === false)
-      }, alarm.toast);
+      });
     });
   }
 };
@@ -352,5 +355,12 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('dblcli
   if (entry && target.classList.contains('switch') === false) {
     const active = entry.querySelector('.switch').checked;
     alarm.edit(entry.o, active);
+  }
+});
+
+// update toast on "alarms-storage" change
+chrome.storage.onChanged.addListener(ps => {
+  if (ps['alarms-storage']) {
+    alarm.toast();
   }
 });
