@@ -236,6 +236,7 @@ alarm.toast = () => {
       const n = new Date();
       const d = new Date(time);
       const t = new Date(n.getTime() + 24 * 60 * 60 * 1000);
+
       if (d.getDate() === n.getDate()) {
         current.textContent = 'Today - ' + alarm.format(d);
       }
@@ -327,6 +328,10 @@ alarm.toast = () => {
     document.querySelector('.alarm [data-id="edit"] [data-id="name"]').value = o.name || '';
 
     document.body.dataset.alarm = 'edit';
+
+    hours.dispatchEvent(new Event('change', {
+      bubbles: true
+    }));
   };
 }
 

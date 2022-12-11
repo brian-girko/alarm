@@ -4,7 +4,7 @@
 const args = new URLSearchParams(location.search);
 document.documentElement.classList.add(args.get('mode'));
 
-// supports page zoom other than 100% on popup mode
+// supports page zoom other than 100% on the popup mode
 if (args.get('mode') !== 'pp') {
   document.body.style.height = (window.visualViewport.height - 1) + 'px';
 }

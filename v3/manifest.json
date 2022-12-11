@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "version": "0.2.6",
+  "version": "0.2.7",
   "name": "Alarm, Timer and Stopwatch",
   "description": "__MSG_description__",
   "default_locale": "en",
@@ -11,7 +11,7 @@
     "contextMenus"
   ],
   "offline_enabled": true,
-  "homepage_url": "https://add0n.com/alarm.html",
+  "homepage_url": "https://webextension.org/listing/alarm.html",
   "background": {
     "service_worker": "worker.js"
   },
