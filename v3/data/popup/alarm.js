@@ -123,7 +123,7 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
   for (const o of prefs.alarms.sort((a, b) => {
     return a.time.hours * 60 + a.time.minutes - (b.time.hours * 60 + b.time.minutes);
   })) {
-    const {id, time, days} = o;
+    const {id, time, name, days} = o;
     const clone = document.importNode(t.content, true);
     // time
     clone.querySelector('[data-id="time"]').textContent =
@@ -155,6 +155,7 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
     const active = alarms.some(a => a.name.startsWith(id));
     entry.setAttribute('disabled', active === false);
     clone.querySelector('input[type="checkbox"]').checked = active;
+    entry.title = clone.querySelector('[data-id="description"]').textContent = name || '';
 
     entry.querySelector('[data-id="once"]').textContent = o.once ? 'once' : '';
     entries.appendChild(clone);

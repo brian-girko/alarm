@@ -207,11 +207,18 @@ body[data-tab="timer"] #content {
   background-color: var(--bg-dark-color);
   padding: 20px 30px;
   position: relative;
+  gap: 10px;
 }
 .alarm .entry [data-id="time"] {
-  flex: 1;
   font-weight: 300;
   text-align: left;
+}
+.alarm .entry [data-id="description"] {
+  text-align: left;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .alarm .entry [data-id="date"].range {
   color: var(--color-pink);
