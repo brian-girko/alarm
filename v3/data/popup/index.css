@@ -220,6 +220,9 @@ body[data-tab="timer"] #content {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.alarm .entry[disabled=false] [data-id="description"] {
+  color: var(--color-dark);
+}
 .alarm .entry [data-id="date"].range {
   color: var(--color-pink);
 }

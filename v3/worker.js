@@ -10,7 +10,7 @@ const notifications = {
       c();
     });
   },
-  create(name, opts) {
+  async create(name, opts) {
     const args = new URLSearchParams();
     args.set('name', name);
     args.set('title', opts.title);
@@ -19,19 +19,18 @@ const notifications = {
     args.set('volume', opts.volume);
     args.set('repeats', opts.repeats);
 
-    chrome.storage.local.get({
+    const prefs = await chrome.storage.local.get({
       'notify-position': 'center' // center, br, tr
-    }, prefs => {
-      args.set('position', prefs['notify-position']);
-
-      const p = {
-        width: 580,
-        height: 250,
-        type: 'popup',
-        url: 'data/notify/index.html?' + args.toString()
-      };
-      chrome.windows.create(p);
     });
+    args.set('position', prefs['notify-position']);
+
+    const p = {
+      width: 580,
+      height: 250,
+      type: 'popup',
+      url: 'data/notify/index.html?' + args.toString()
+    };
+    chrome.windows.create(p);
   },
   kill() {
     chrome.runtime.sendMessage({
@@ -41,7 +40,7 @@ const notifications = {
 };
 
 const alarms = {
-  fire({name}) {
+  async fire({name}) {
     const set = (name, title, sound, repeats, volume, message = `Time's up`) => notifications.clear(name, () => {
       notifications.create(name, {
         title,
@@ -52,52 +51,49 @@ const alarms = {
       });
     });
     if (name.startsWith('timer-')) {
-      chrome.storage.local.get({
+      const prefs = await chrome.storage.local.get({
         'src-timer': 'data/sounds/4.mp3',
         'repeats-timer': 5,
         'volume-timer': 0.8
-      }, prefs => {
-        set(name, 'Timer', prefs['src-timer'], prefs['repeats-timer'], prefs['volume-timer']);
       });
+      set(name, 'Timer', prefs['src-timer'], prefs['repeats-timer'], prefs['volume-timer']);
     }
     else if (name.startsWith('alarm-')) {
       const id = name.split(':')[0];
-      chrome.storage.local.get({
+      const prefs = await chrome.storage.local.get({
         'alarms': [],
         'src-alarm': 'data/sounds/1.mp3',
         'repeats-alarm': 5,
         'volume-alarm': 0.8
-      }, prefs => {
-        const o = prefs.alarms.filter(a => a.id === id).shift();
-        if (o.snooze) {
-          alarms.create('audio-' + id + '/1', {
-            when: Date.now() + 5 * 60 * 1000
-          });
-          alarms.create('audio-' + id + '/2', {
-            when: Date.now() + 10 * 60 * 1000
-          });
-        }
-        set(id, 'Alarm', prefs['src-alarm'], prefs['repeats-alarm'], prefs['volume-alarm'], o.name);
       });
+      const o = prefs.alarms.filter(a => a.id === id).shift();
+      if (o.snooze) {
+        alarms.create('audio-' + id + '/1', {
+          when: Date.now() + 5 * 60 * 1000
+        });
+        alarms.create('audio-' + id + '/2', {
+          when: Date.now() + 10 * 60 * 1000
+        });
+      }
+      set(id, 'Alarm', prefs['src-alarm'], prefs['repeats-alarm'], prefs['volume-alarm'], o.name);
     }
     else if (name.startsWith('audio-')) {
       const id = name.replace('audio-', '').split('/')[0];
-      chrome.storage.local.get({
+      const prefs = await chrome.storage.local.get({
         'alarms': [],
         'src-misc': 'data/sounds/5.mp3',
         'repeats-misc': 5,
         'volume-misc': 0.8
-      }, prefs => {
-        let title = 'Misc';
-        if (id.startsWith('alarm-')) {
-          title = 'Alarm';
-        }
-        else if (id.startsWith('timer-')) {
-          title = 'Timer';
-        }
-        const o = prefs.alarms.filter(a => a.id === id).shift();
-        set(id, title, prefs['src-misc'], prefs['repeats-misc'], prefs['volume-misc'], o?.name);
       });
+      let title = 'Misc';
+      if (id.startsWith('alarm-')) {
+        title = 'Alarm';
+      }
+      else if (id.startsWith('timer-')) {
+        title = 'Timer';
+      }
+      const o = prefs.alarms.filter(a => a.id === id).shift();
+      set(id, title, prefs['src-misc'], prefs['repeats-misc'], prefs['volume-misc'], o?.name);
     }
   },
   get(name, c) {
@@ -180,9 +176,15 @@ const alarms = {
   });
 }
 {
-  const once = () => chrome.storage.local.get({
-    'alarms-storage': {}
-  }, async prefs => {
+  const once = async () => {
+    if (once.done) {
+      return;
+    }
+    once.done = true;
+
+    const prefs = await chrome.storage.local.get({
+      'alarms-storage': {}
+    });
     const now = Date.now();
     let modified = false;
     for (const [name, info] of Object.entries(prefs['alarms-storage'])) {
@@ -208,7 +210,7 @@ const alarms = {
     if (modified) {
       chrome.storage.local.set(prefs);
     }
-  });
+  };
   chrome.runtime.onStartup.addListener(once);
   chrome.runtime.onInstalled.addListener(once);
 }
@@ -299,26 +301,27 @@ const onMessage = (request, sender, respose) => {
 };
 chrome.runtime.onMessage.addListener(onMessage);
 
-const onCommand = command => {
+const onCommand = async command => {
   if (command === 'open-interface') {
-    chrome.windows.getCurrent(win => chrome.storage.local.get({
+    const win = await chrome.windows.getCurrent();
+    const prefs = await chrome.storage.local.get({
       width: 400,
       height: 600,
       left: win.left + Math.round((win.width - 400) / 2),
       top: win.top + Math.round((win.height - 600) / 2)
-    }, prefs => chrome.windows.create({
+    });
+    chrome.windows.create({
       url: 'data/popup/index.html?mode=pp',
       width: prefs.width,
       height: prefs.height,
       left: prefs.left,
       top: prefs.top,
       type: 'popup'
-    })));
+    });
   }
 };
 chrome.commands.onCommand.addListener(onCommand);
 chrome.action.onClicked.addListener(() => onCommand('open-interface'));
-
 
 chrome.storage.onChanged.addListener(ps => {
   if (ps.mode) {
@@ -328,17 +331,30 @@ chrome.storage.onChanged.addListener(ps => {
   }
 });
 {
-  const once = () => chrome.storage.local.get({
-    mode: 'bp'
-  }, prefs => chrome.action.setPopup({
-    popup: prefs.mode === 'pp' ? '' : 'data/popup/index.html'
-  }));
+  const once = async () => {
+    if (once.done) {
+      return;
+    }
+    once.done = true;
+
+    const prefs = await chrome.storage.local.get({
+      mode: 'bp'
+    });
+    chrome.action.setPopup({
+      popup: prefs.mode === 'pp' ? '' : 'data/popup/index.html'
+    });
+  };
   chrome.runtime.onInstalled.addListener(once);
   chrome.runtime.onStartup.addListener(once);
 }
 
 {
   const once = () => {
+    if (once.done) {
+      return;
+    }
+    once.done = true;
+
     chrome.contextMenus.create({
       id: 'remove-all-alarms',
       title: 'Remove all Alarms and Timers',
@@ -373,8 +389,7 @@ chrome.contextMenus.onClicked.addListener(info => {
 {
   const {management, runtime: {onInstalled, setUninstallURL, getManifest}, storage, tabs} = chrome;
   if (navigator.webdriver !== true) {
-    const page = getManifest().homepage_url;
-    const {name, version} = getManifest();
+    const {homepage_url: page, name, version} = getManifest();
     onInstalled.addListener(({reason, previousVersion}) => {
       management.getSelf(({installType}) => installType === 'normal' && storage.local.get({
         'faqs': true,
@@ -383,7 +398,7 @@ chrome.contextMenus.onClicked.addListener(info => {
         if (reason === 'install' || (prefs.faqs && reason === 'update')) {
           const doUpdate = (Date.now() - prefs['last-update']) / 1000 / 60 / 60 / 24 > 45;
           if (doUpdate && previousVersion !== version) {
-            tabs.query({active: true, currentWindow: true}, tbs => tabs.create({
+            tabs.query({active: true, lastFocusedWindow: true}, tbs => tabs.create({
               url: page + '?version=' + version + (previousVersion ? '&p=' + previousVersion : '') + '&type=' + reason,
               active: reason === 'install',
               ...(tbs && tbs.length && {index: tbs[0].index + 1})
