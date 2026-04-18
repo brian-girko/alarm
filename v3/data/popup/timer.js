@@ -26,7 +26,7 @@ document.querySelector('.timer input[data-command="start"]').addEventListener('c
 timer.ms2time = duration => ({
   seconds: Math.floor((duration / 1000) % 60),
   minutes: Math.floor((duration / (1000 * 60)) % 60),
-  hours: Math.floor((duration / (1000 * 60 * 60)) % 24)
+  hours: Math.floor((duration / (1000 * 60 * 60))) // there is no limit to 24 hours
 });
 
 timer.format = num => ('00' + num).substr(-2);
@@ -36,6 +36,7 @@ timer.tick = (once = false) => {
 
   if (n > 0) {
     const o = timer.ms2time(n);
+    console.log(n);
     hours.value = timer.format(o.hours);
     minutes.value = timer.format(o.minutes);
     seconds.value = timer.format(o.seconds);
