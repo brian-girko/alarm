@@ -36,7 +36,6 @@ timer.tick = (once = false) => {
 
   if (n > 0) {
     const o = timer.ms2time(n);
-    console.log(n);
     hours.value = timer.format(o.hours);
     minutes.value = timer.format(o.minutes);
     seconds.value = timer.format(o.seconds);

@@ -28,6 +28,7 @@
     "default_popup": "data/popup/index.html"
   },
   "options_ui": {
+    "open_in_tab": true,
     "page": "data/options/index.html"
   },
   "commands": {

@@ -53,6 +53,10 @@ const audio = {};
 audio.cache = {};
 audio.play = (id, src, n = 5, volume = 0.8) => {
   audio.stop(id);
+  if (!volume) {
+    return;
+  }
+
   const e = new Audio();
   e.volume = volume;
   e.addEventListener('ended', function() {
@@ -77,7 +81,7 @@ audio.stop = id => {
     delete audio.cache[id];
   }
 };
-audio.play(args.get('name'), args.get('sound'), Number(args.get('repeats'), Number(args.get('volume'))));
+audio.play(args.get('name'), args.get('sound'), Number(args.get('repeats')), Number(args.get('volume')));
 
 // bring to front
 window.onblur = () => setTimeout(() => chrome.runtime.sendMessage({
