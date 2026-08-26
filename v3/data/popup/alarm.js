@@ -131,6 +131,7 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
     // next occurance
     const times = alarm.convert(time, days);
     const date = clone.querySelector('[data-id="date"]');
+    const active = alarms.some(a => a.name.startsWith(id));
     if (days.length) {
       const map = {
         0: 'Su',
@@ -141,7 +142,22 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
         5: 'F',
         6: 'Sa'
       };
-      date.textContent = days.map(d => map[d]).join(' ');
+      // while a once-alarm is enabled, its fired one-shot slots vanish
+      // from chrome.alarms - strike those weekdays. an OFF alarm has no
+      // slots either (cleared, not fired), so it renders without strikes
+      const pending = new Set(
+        alarms.filter(a => a.name.startsWith(id))
+          .map(a => new Date(a.scheduledTime).getDay())
+      );
+      date.textContent = '';
+      for (const d of days) {
+        const span = document.createElement('span');
+        span.textContent = map[d];
+        if (o.once && active && !pending.has(Number(d))) {
+          span.classList.add('fired');
+        }
+        date.appendChild(span);
+      }
       date.classList.add('range');
     }
     else {
@@ -151,7 +167,6 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
     entry.times = times;
     entry.o = o;
     entry.dataset.id = id;
-    const active = alarms.some(a => a.name.startsWith(id));
     entry.setAttribute('disabled', active === false);
     clone.querySelector('input[type="checkbox"]').checked = active;
     entry.title = clone.querySelector('[data-id="description"]').textContent = name || '';
@@ -363,9 +378,11 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('dblcli
   }
 });
 
-// update toast on "alarms-storage" change
+// update toast and entries on "alarms-storage" change
 chrome.storage.onChanged.addListener(ps => {
   if (ps['alarms-storage']) {
     alarm.toast();
+    document.querySelector('.alarm div[data-id="entries"]').textContent = '';
+    init();
   }
 });

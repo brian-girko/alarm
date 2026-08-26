@@ -59,6 +59,56 @@ const nextOccurrence = (time, days = [], from = Date.now()) => {
   }).filter((t, i, l) => l.indexOf(t) === i).sort();
 };
 
+// rebuilds alarms-storage entries: weekly alarm slots are re-anchored to
+// wall-clock times (fixed-period repeats drift across DST changes) and
+// expired entries are dropped. one-shot ("once") slots keep their exact
+// toggle-time epoch and simply expire when due - rebuilding them would
+// resurrect already-fired occurrences as endless weekly repeats
+const normalizeStorage = (defs, storage, from = Date.now()) => {
+  let changed = false;
+  const ids = new Set(
+    Object.keys(storage)
+      .filter(n => n.startsWith('alarm-'))
+      .map(n => n.split(':')[0])
+      .filter(id => defs.has(id))
+  );
+  for (const id of ids) {
+    const o = defs.get(id);
+    if (o.once) {
+      continue;
+    }
+    const times = nextOccurrence(o.time, o.days || [], from);
+    Object.keys(storage)
+      .filter(n => n.startsWith(id + ':'))
+      .forEach((n, index) => {
+        if (index < times.length) {
+          storage[n] = {
+            when: times[index],
+            periodInMinutes: 7 * 24 * 60
+          };
+        }
+        else {
+          delete storage[n];
+        }
+        changed = true;
+      });
+  }
+  for (const [name, info] of Object.entries(storage)) {
+    if (info.when && info.when < from) {
+      if (info.periodInMinutes) {
+        while (info.when < from) {
+          info.when += info.periodInMinutes * 60 * 1000;
+        }
+      }
+      else {
+        delete storage[name];
+      }
+      changed = true;
+    }
+  }
+  return changed;
+};
+
 const alarms = {
   async fire({name}) {
     const set = (name, title, sound, repeats, volume, message = `Time's up`) => notifications.clear(name, () => {
@@ -96,10 +146,11 @@ const alarms = {
         });
       }
       set(id, 'Alarm', prefs['src-alarm'], prefs['repeats-alarm'], prefs['volume-alarm'], o?.name);
-      // reschedule upcoming occurrences from the wall-clock definition;
-      // stale slot names beyond the new count get swept by alarms.create's
-      // clear step (they match the id key and are not re-created)
-      if (o) {
+      // reschedule upcoming occurrences of recurring alarms from their
+      // wall-clock definition; once-alarms must stay one-shot (their
+      // remaining slots are already scheduled and drift-free). stale slot
+      // names beyond the new count get swept by the clear step
+      if (o && !o.once) {
         nextOccurrence(o.time, o.days).forEach((when, index) => alarms.create(id + ':' + index, {
           when,
           periodInMinutes: 7 * 24 * 60
@@ -215,52 +266,13 @@ const alarms = {
       'alarms-storage': {},
       'alarms': []
     });
-    const now = Date.now();
-    let modified = false;
-    // rebuild alarm schedules from their stored wall-clock definitions
     const defs = new Map(prefs.alarms.map(a => [a.id, a]));
-    const ids = new Set(
-      Object.keys(prefs['alarms-storage'])
-        .filter(n => n.startsWith('alarm-'))
-        .map(n => n.split(':')[0])
-        .filter(id => defs.has(id))
-    );
-    for (const id of ids) {
-      const o = defs.get(id);
-      const times = nextOccurrence(o.time, o.days || [], now);
-      Object.keys(prefs['alarms-storage'])
-        .filter(n => n.startsWith(id + ':'))
-        .forEach((n, index) => {
-          if (index < times.length) {
-            prefs['alarms-storage'][n] = {
-              when: times[index],
-              periodInMinutes: 7 * 24 * 60
-            };
-          }
-          else {
-            delete prefs['alarms-storage'][n];
-          }
-          modified = true;
-        });
-    }
+    const modified = normalizeStorage(defs, prefs['alarms-storage']);
     for (const [name, info] of Object.entries(prefs['alarms-storage'])) {
-      if (info.when && info.when < now) {
-        if (info.periodInMinutes) {
-          while (info.when < now) {
-            info.when += info.periodInMinutes * 60 * 1000;
-          }
-        }
-        else {
-          delete prefs['alarms-storage'][name];
-        }
-        modified = true;
-      }
-      if (name in prefs['alarms-storage']) {
-        const o = await chrome.alarms.get(name);
-        if (!o || (name.startsWith('alarm-') && o.scheduledTime !== info.when)) {
-          chrome.alarms.create(name, info);
-          console.info('Force Creating a new Alarm', name, info);
-        }
+      const o = await chrome.alarms.get(name);
+      if (!o || (name.startsWith('alarm-') && o.scheduledTime !== info.when)) {
+        chrome.alarms.create(name, info);
+        console.info('Force Creating a new Alarm', name, info);
       }
     }
     if (modified) {
@@ -287,13 +299,22 @@ chrome.idle.onStateChanged.addListener(state => {
       for (const o of os) {
         if (o.scheduledTime < now) {
           const def = o.name.startsWith('alarm-') ? defs.get(o.name.split(':')[0]) : null;
-          alarms.create(o.name, def ? {
-            when: nextOccurrence(def.time, def.days || [], now)[0],
-            periodInMinutes: 7 * 24 * 60
-          } : {
-            when: now + 1000,
-            periodInMinutes: o.periodInMinutes
-          });
+          let info;
+          if (def && !def.once) {
+            info = {
+              when: nextOccurrence(def.time, def.days || [], now)[0],
+              periodInMinutes: 7 * 24 * 60
+            };
+          }
+          else {
+            // once-alarms ring immediately (once) and expire; timers keep
+            // their original period
+            info = {
+              when: now + 1000,
+              periodInMinutes: o.periodInMinutes
+            };
+          }
+          alarms.create(o.name, info);
         }
       }
     });

@@ -37,6 +37,7 @@
   --bg-dark-color: #444548;
   --bg-red-color: #692632;
   --bg-pink-color: #66689e;
+  --bg-scrollbar: #6b6b6b;
   --font-small: 12px;
   --font-medium: 22px;
   --font-normal: 15px;
@@ -225,6 +226,12 @@ body[data-tab="timer"] #content {
 }
 .alarm .entry [data-id="date"].range {
   color: var(--color-pink);
+  display: inline-flex;
+  gap: 5px;
+}
+.alarm .entry [data-id="date"] .fired {
+  text-decoration: line-through;
+  opacity: 0.4;
 }
 .alarm .entry:not(:last-child) {
   margin-bottom: 10px;
@@ -290,6 +297,8 @@ body[data-alarm="view"] div[data-id="edit"] {
 }
 .alarm div[data-id="entries"] {
   overflow: auto;
+  scrollbar-color: var(--bg-scrollbar) transparent;
+  scrollbar-width: thin;
 }
 body[data-alarm="edit"] div[data-id="content"] {
   display: none;
