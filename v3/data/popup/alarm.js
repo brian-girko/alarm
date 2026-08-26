@@ -224,8 +224,24 @@ alarm.toast = () => {
       const time = Date.now();
       const delays = times.map(d => d - time);
       const o = alarm.ms2time(delays[0]);
-      h1.textContent = `Next in ${o.days ? o.days + ' days ' : ''}${o.hours} hours ${o.minutes} minutes`;
-      h3.textContent = alarm.format(new Date(times[0]), true);
+      const countdown = `in ${o.days ? o.days + ' days ' : ''}${o.hours} hours ${o.minutes} minutes`;
+      const next = alarms.find(a => a.scheduledTime === times[0]);
+
+      if (next.name.startsWith('audio-')) {
+        const id = next.name.replace('audio-', '').split('/')[0];
+        chrome.storage.local.get({
+          'alarms': []
+        }, prefs => {
+          const source = prefs.alarms.filter(a => a.id === id).shift();
+          const label = id.startsWith('timer-') ? 'Timer' : (source?.name || 'Alarm');
+          h1.textContent = `Snoozed ${countdown}`;
+          h3.textContent = alarm.format(new Date(times[0]), true) + ' - ' + label;
+        });
+      }
+      else {
+        h1.textContent = `Next ${countdown}`;
+        h3.textContent = alarm.format(new Date(times[0]), true);
+      }
     }
     else {
       if (document.querySelector('.entry')) {

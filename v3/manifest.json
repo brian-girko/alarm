@@ -14,7 +14,8 @@
   "offline_enabled": true,
   "homepage_url": "https://webextension.org/listing/alarm.html",
   "background": {
-    "service_worker": "worker.js"
+    "service_worker": "worker.js",
+    "scripts": ["worker.js"]
   },
   "icons": {
     "16": "data/icons/16.png",
