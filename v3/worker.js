@@ -39,6 +39,26 @@ const notifications = {
   }
 };
 
+// compute upcoming absolute times from a stored wall-clock definition.
+// calendar-field based (setDate/setHours), so DST transitions are resolved
+// with the offset valid on the target date; fixed-period repeats
+// (7 * 24 * 60 minutes) would otherwise drift by one hour
+const nextOccurrence = (time, days = [], from = Date.now()) => {
+  const base = new Date(from);
+  base.setSeconds(0);
+  const day = base.getDay();
+  const list = days.length ? [...days] : [day];
+  return list.map(a => (a - day)).map(n => {
+    const o = new Date(from);
+    o.setDate(base.getDate() + n);
+    o.setHours(Number(time.hours), Number(time.minutes), 0, 0);
+    while (o.getTime() <= from) {
+      o.setDate(o.getDate() + 7);
+    }
+    return o.getTime();
+  }).filter((t, i, l) => l.indexOf(t) === i).sort();
+};
+
 const alarms = {
   async fire({name}) {
     const set = (name, title, sound, repeats, volume, message = `Time's up`) => notifications.clear(name, () => {
@@ -67,7 +87,7 @@ const alarms = {
         'volume-alarm': 0.8
       });
       const o = prefs.alarms.filter(a => a.id === id).shift();
-      if (o.snooze) {
+      if (o?.snooze) {
         alarms.create('audio-' + id + '/1', {
           when: Date.now() + 5 * 60 * 1000
         });
@@ -75,7 +95,16 @@ const alarms = {
           when: Date.now() + 10 * 60 * 1000
         });
       }
-      set(id, 'Alarm', prefs['src-alarm'], prefs['repeats-alarm'], prefs['volume-alarm'], o.name);
+      set(id, 'Alarm', prefs['src-alarm'], prefs['repeats-alarm'], prefs['volume-alarm'], o?.name);
+      // reschedule upcoming occurrences from the wall-clock definition;
+      // stale slot names beyond the new count get swept by alarms.create's
+      // clear step (they match the id key and are not re-created)
+      if (o) {
+        nextOccurrence(o.time, o.days).forEach((when, index) => alarms.create(id + ':' + index, {
+          when,
+          periodInMinutes: 7 * 24 * 60
+        }));
+      }
     }
     else if (name.startsWith('audio-')) {
       const id = name.replace('audio-', '').split('/')[0];
@@ -183,10 +212,37 @@ const alarms = {
     once.done = true;
 
     const prefs = await chrome.storage.local.get({
-      'alarms-storage': {}
+      'alarms-storage': {},
+      'alarms': []
     });
     const now = Date.now();
     let modified = false;
+    // rebuild alarm schedules from their stored wall-clock definitions
+    const defs = new Map(prefs.alarms.map(a => [a.id, a]));
+    const ids = new Set(
+      Object.keys(prefs['alarms-storage'])
+        .filter(n => n.startsWith('alarm-'))
+        .map(n => n.split(':')[0])
+        .filter(id => defs.has(id))
+    );
+    for (const id of ids) {
+      const o = defs.get(id);
+      const times = nextOccurrence(o.time, o.days || [], now);
+      Object.keys(prefs['alarms-storage'])
+        .filter(n => n.startsWith(id + ':'))
+        .forEach((n, index) => {
+          if (index < times.length) {
+            prefs['alarms-storage'][n] = {
+              when: times[index],
+              periodInMinutes: 7 * 24 * 60
+            };
+          }
+          else {
+            delete prefs['alarms-storage'][n];
+          }
+          modified = true;
+        });
+    }
     for (const [name, info] of Object.entries(prefs['alarms-storage'])) {
       if (info.when && info.when < now) {
         if (info.periodInMinutes) {
@@ -201,7 +257,7 @@ const alarms = {
       }
       if (name in prefs['alarms-storage']) {
         const o = await chrome.alarms.get(name);
-        if (!o) {
+        if (!o || (name.startsWith('alarm-') && o.scheduledTime !== info.when)) {
           chrome.alarms.create(name, info);
           console.info('Force Creating a new Alarm', name, info);
         }
@@ -223,10 +279,18 @@ chrome.alarms.onAlarm.addListener(a => {
 chrome.idle.onStateChanged.addListener(state => {
   if (state === 'active') {
     const now = Date.now();
-    chrome.alarms.getAll().then(os => {
+    Promise.all([
+      chrome.alarms.getAll(),
+      chrome.storage.local.get({'alarms': []})
+    ]).then(([os, prefs]) => {
+      const defs = new Map(prefs.alarms.map(a => [a.id, a]));
       for (const o of os) {
         if (o.scheduledTime < now) {
-          alarms.create(o.name, {
+          const def = o.name.startsWith('alarm-') ? defs.get(o.name.split(':')[0]) : null;
+          alarms.create(o.name, def ? {
+            when: nextOccurrence(def.time, def.days || [], now)[0],
+            periodInMinutes: 7 * 24 * 60
+          } : {
             when: now + 1000,
             periodInMinutes: o.periodInMinutes
           });

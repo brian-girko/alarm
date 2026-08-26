@@ -66,7 +66,10 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('change
           periodInMinutes = entry.querySelector('[data-id=date]').classList.contains('range') ? 7 * 24 * 60 : undefined;
         }
 
-        entry.times.forEach((when, index) => jobs.push({
+        // recompute at toggle time; entry.times may be stale (popup open
+        // across a DST change) and would reschedule drifted epochs
+        const times = entry.times = alarm.convert(entry.o.time, entry.o.days);
+        times.forEach((when, index) => jobs.push({
           method: 'set-alarm',
           info: {
             when,
@@ -95,14 +98,10 @@ alarm.convert = (time, ds) => {
 
   return days.map(a => (a - day)).map(n => {
     const o = new Date();
-    const of1 = o.getTimezoneOffset();
-
+    // setHours already resolves the wall-clock time with the UTC offset that
+    // is valid on the target date, so DST transitions are handled natively
     o.setDate(d.getDate() + n);
     o.setHours(time.hours, time.minutes, 0);
-
-    // consider timezone changes
-    const of2 = o.getTimezoneOffset();
-    o.setTime(o.getTime() + (of1 - of2) * 60 * 1000);
 
     if (o.getTime() - Date.now() < 0) {
       o.setDate(o.getDate() + 7);
@@ -134,13 +133,13 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
     const date = clone.querySelector('[data-id="date"]');
     if (days.length) {
       const map = {
-        0: 'S',
+        0: 'Su',
         1: 'M',
-        2: 'T',
+        2: 'Tu',
         3: 'W',
-        4: 'T',
+        4: 'Th',
         5: 'F',
-        6: 'S'
+        6: 'Sa'
       };
       date.textContent = days.map(d => map[d]).join(' ');
       date.classList.add('range');
