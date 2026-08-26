@@ -63,6 +63,9 @@ body > div {
   border-left: solid 2px #e6e6e6;
   padding-left: 10px;
 }
+div[hidden] {
+  display: none !important;
+}
 
 p {
   white-space: pre;
@@ -72,4 +75,17 @@ p {
   display: flex;
   justify-content: end;
   padding: 10px;
+}
+
+#sound-alert {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #664d03;
+  background-color: #fff3cd;
+  border-bottom: solid 1px #ffec99;
 }

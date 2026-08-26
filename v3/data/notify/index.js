@@ -25,6 +25,11 @@ chrome.runtime.sendMessage({
   position: args.get('position')
 }, () => chrome.runtime.lastError);
 
+// stops the offscreen fallback player (if this ring was routed there)
+const stopOffscreen = () => chrome.runtime.sendMessage({
+  method: 'stop-offscreen-audio'
+}, () => chrome.runtime.lastError);
+
 document.getElementById('snooze').onclick = () => {
   const buttonIndex = document.getElementById('range').selectedIndex + 1;
 
@@ -35,9 +40,13 @@ document.getElementById('snooze').onclick = () => {
       when: Date.now() + buttonIndex * 5 * 60 * 1000
     }
   }, () => setTimeout(() => window.close(), 100));
+  stopOffscreen();
 };
 
-document.getElementById('done').onclick = () => window.close();
+document.getElementById('done').onclick = () => {
+  stopOffscreen();
+  window.close();
+};
 
 document.getElementById('clean').onclick = e => {
   const v = e.target.value;
@@ -71,7 +80,7 @@ audio.play = (id, src, n = 5, volume = 0.8) => {
   }, false);
   audio.cache[id] = e;
   e.src = '/' + src;
-  e.play();
+  return e.play();
 };
 audio.stop = id => {
   const e = audio.cache[id];
@@ -81,7 +90,46 @@ audio.stop = id => {
     delete audio.cache[id];
   }
 };
-audio.play(args.get('name'), args.get('sound'), Number(args.get('repeats')), Number(args.get('volume')));
+// sound alert banner; only revealed when both the in-window player and
+// the offscreen fallback failed to start
+const soundAlert = document.getElementById('sound-alert');
+const showSoundAlert = errors => {
+  const details = errors.filter(Boolean).map(e => {
+    if (typeof e === 'string') {
+      return e;
+    }
+    return (e.name ? e.name + ': ' : '') + e.message;
+  }).join(' | ');
+  soundAlert.textContent =
+    'Sound could not be played because the browser blocked automatic audio playback' +
+    (details ? ' (' + details + ')' : '') + '.';
+  soundAlert.hidden = false;
+};
+
+{
+  const p = audio.play(args.get('name'), args.get('sound'), Number(args.get('repeats')), Number(args.get('volume')));
+  if (p && p.catch) {
+    p.catch(err => {
+      console.warn('in-window playback failed', err);
+      chrome.runtime.sendMessage({
+        method: 'play-offscreen',
+        name: args.get('name'),
+        src: args.get('sound'),
+        volume: Number(args.get('volume')),
+        repeats: Number(args.get('repeats'))
+      }, ok => {
+        console.log(ok);
+
+        if (chrome.runtime.lastError) {
+          showSoundAlert([err, chrome.runtime.lastError.message]);
+        }
+        else if (ok !== true) {
+          showSoundAlert([err, 'offscreen playback failed']);
+        }
+      });
+    });
+  }
+}
 
 // bring to front
 window.onblur = () => setTimeout(() => chrome.runtime.sendMessage({
@@ -93,13 +141,17 @@ chrome.runtime.onMessage.addListener((request, sender, resposne) => {
   if (request.method === 'remove-notification') {
     if (request.name === args.get('name')) {
       resposne(true);
+      stopOffscreen();
       window.close();
     }
   }
   else if (request.method === 'remove-all-notifications') {
+    stopOffscreen();
     window.close();
   }
 });
+
+window.onbeforeunload = () => stopOffscreen();
 
 // persist
 document.getElementById('range').onchange = e => chrome.storage.local.set({

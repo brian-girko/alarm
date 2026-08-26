@@ -39,6 +39,79 @@ const notifications = {
   }
 };
 
+// offscreen document fallback for alarm sounds; used when the visible
+// notification window cannot play audio because the browser blocks
+// audible autoplay (alarms fire without a user gesture)
+const offscreen = {
+  creating: null,
+  async setup() {
+    const url = 'data/offscreen/index.html';
+    const path = chrome.runtime.getURL(url);
+    if ('getContexts' in chrome.runtime) {
+      const contexts = await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT'],
+        documentUrls: [path]
+      });
+      if (contexts.length) {
+        return;
+      }
+    }
+    else {
+      const matched = await clients.matchAll();
+      if (matched.some(c => c.url.includes(chrome.runtime.id))) {
+        return;
+      }
+    }
+    offscreen.creating = chrome.offscreen.createDocument({
+      url,
+      reasons: ['AUDIO_PLAYBACK'],
+      justification: 'Play the alarm/timer notification sound when in-page playback is blocked by the browser autoplay policy'
+    });
+    try {
+      await offscreen.creating;
+    }
+    finally {
+      offscreen.creating = null;
+    }
+  },
+  async play({src, volume, repeats}) {
+    if (('offscreen' in chrome) === false) {
+      console.warn('offscreen API is not available');
+      return false;
+    }
+    try {
+      await offscreen.setup();
+    }
+    catch (e) {
+      console.warn('failed to create offscreen document', e);
+      return false;
+    }
+    return new Promise(resolve => {
+      chrome.runtime.sendMessage({
+        target: 'offscreen',
+        method: 'play-audio',
+        src,
+        volume,
+        repeats
+      }, ok => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          console.warn('offscreen playback error', err.message);
+          resolve(false);
+        }
+        else {
+          resolve(ok === true);
+        }
+      });
+    });
+  },
+  stop() {
+    if ('offscreen' in chrome) {
+      chrome.offscreen.closeDocument().catch(() => {});
+    }
+  }
+};
+
 // compute upcoming absolute times from a stored wall-clock definition.
 // calendar-field based (setDate/setHours), so DST transitions are resolved
 // with the offset valid on the target date; fixed-period repeats
@@ -322,6 +395,10 @@ chrome.idle.onStateChanged.addListener(state => {
 });
 
 const onMessage = (request, sender, respose) => {
+  if (request.target === 'offscreen') {
+    return;
+  }
+
   if (request.method === 'set-alarm') {
     alarms.create(request.name, request.info);
   }
@@ -348,6 +425,16 @@ const onMessage = (request, sender, respose) => {
   }
   else if (request.method === 'remove-all-notifications') {
     notifications.kill();
+  }
+  else if (request.method === 'play-offscreen') {
+    offscreen.play(request).then(ok => respose(ok), e => {
+      console.warn('play-offscreen failed', e);
+      respose(false);
+    });
+    return true;
+  }
+  else if (request.method === 'stop-offscreen-audio') {
+    offscreen.stop();
   }
   else if (request.method === 'bring-to-front') {
     chrome.storage.local.get({

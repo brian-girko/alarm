@@ -323,6 +323,8 @@ body[data-alarm="edit"] div[data-id="content"] {
 .stopwatch [data-id="content"] {
   flex: 1;
   overflow: auto;
+  scrollbar-color: var(--bg-scrollbar) transparent;
+  scrollbar-width: thin;
 }
 .stopwatch table {
   width: calc(100% - 40px);
