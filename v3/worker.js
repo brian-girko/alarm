@@ -527,6 +527,11 @@ chrome.storage.onChanged.addListener(ps => {
       contexts: ['action']
     });
     chrome.contextMenus.create({
+      id: 'remove-all-snoozes',
+      title: 'Remove all Snoozes',
+      contexts: ['action']
+    });
+    chrome.contextMenus.create({
       id: 'remove-all-notifications',
       title: 'Remove all Notifications',
       contexts: ['action']
@@ -544,6 +549,13 @@ chrome.contextMenus.onClicked.addListener(info => {
     });
     chrome.storage.local.set({
       'alarms-storage': {}
+    });
+  }
+  else if (info.menuItemId === 'remove-all-snoozes') {
+    alarms.getAll(as => {
+      for (const a of as.filter(a => a.name.startsWith('audio-'))) {
+        alarms.clear(a.name);
+      }
     });
   }
   else if (info.menuItemId === 'remove-all-notifications') {

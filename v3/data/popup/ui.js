@@ -24,6 +24,27 @@ document.getElementById('plus').addEventListener('click', () => {
   }
 });
 
+// remove all snoozes
+document.getElementById('kill-snoozes').addEventListener('click', () => {
+  chrome.runtime.sendMessage({
+    method: 'get-alarms'
+  }, alarms => {
+    const jobs = alarms
+      .filter(a => a.name.startsWith('audio-'))
+      .map(a => ({
+        method: 'clear-alarm',
+        name: a.name
+      }));
+    if (jobs.length !== 0 &&
+      confirm(`Remove ${jobs.length} snooze${jobs.length > 1 ? 's' : ''}?`) === true) {
+      chrome.runtime.sendMessage({
+        method: 'batch',
+        jobs
+      });
+    }
+  });
+});
+
 // tools
 document.addEventListener('click', e => {
   const {command} = e.target.dataset;

@@ -20,7 +20,11 @@
     <h1 for="alarm" class="medium">Alarm</h1>
     <h1 for="stopwatch" class="medium">Stopwatch</h1>
     <h1 for="timer" class="medium">Timer</h1>
-    <input type="button" id="plus">
+    <div id="snoozes">
+      <input type="button" id="kill-snoozes" title="Remove all Snoozes" disabled>
+      <span data-id="badge"></span>
+    </div>
+    <input type="button" id="plus" title="Add a new Alarm">
   </header>
   <div id="content" hbox flex="1">
     <div for="alarm" class="alarm" vbox>
