@@ -56,12 +56,6 @@ const offscreen = {
         return;
       }
     }
-    else {
-      const matched = await clients.matchAll();
-      if (matched.some(c => c.url.includes(chrome.runtime.id))) {
-        return;
-      }
-    }
     offscreen.creating = chrome.offscreen.createDocument({
       url,
       reasons: ['AUDIO_PLAYBACK'],

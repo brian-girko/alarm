@@ -111,6 +111,58 @@ alarm.convert = (time, ds) => {
   }).filter((n, i, l) => l.indexOf(n) === i).sort();
 };
 
+alarm.update = (entry, o, alarms) => {
+  const {id, time, name, days} = o;
+  // time
+  entry.querySelector('[data-id="time"]').textContent =
+    ('0' + time.hours).substr(-2) + ':' +
+    ('0' + time.minutes).substr(-2);
+  // next occurance
+  const times = entry.times = alarm.convert(time, days);
+  const date = entry.querySelector('[data-id="date"]');
+  const active = alarms.some(a => a.name.startsWith(id));
+  if (days.length) {
+    const map = {
+      0: 'Su',
+      1: 'M',
+      2: 'Tu',
+      3: 'W',
+      4: 'Th',
+      5: 'F',
+      6: 'Sa'
+    };
+    // while a once-alarm is enabled, its fired one-shot slots vanish
+    // from chrome.alarms - strike those weekdays. an OFF alarm has no
+    // slots either (cleared, not fired), so it renders without strikes
+    const pending = new Set(
+      alarms.filter(a => a.name.startsWith(id))
+        .map(a => new Date(a.scheduledTime).getDay())
+    );
+    date.textContent = '';
+    for (const d of days) {
+      const span = document.createElement('span');
+      span.textContent = map[d];
+      if (o.once && active && !pending.has(Number(d))) {
+        span.classList.add('fired');
+      }
+      date.appendChild(span);
+    }
+    date.classList.add('range');
+  }
+  else {
+    date.classList.remove('range');
+    date.textContent = alarm.format(new Date(times[0]));
+  }
+
+  entry.o = o;
+  entry.dataset.id = id;
+  entry.setAttribute('disabled', active === false);
+  entry.querySelector('input[type="checkbox"]').checked = active;
+  entry.title = entry.querySelector('[data-id="description"]').textContent = name || '';
+
+  entry.querySelector('[data-id="once"]').textContent = o.once ? 'once' : '';
+};
+
 const init = (callback = () => {}) => chrome.runtime.sendMessage({
   method: 'get-alarms'
 }, alarms => chrome.storage.local.get({
@@ -119,61 +171,33 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
   const t = document.querySelector('.alarm template');
   const entries = document.querySelector('.alarm div[data-id="entries"]');
 
+  // reuse existing entries keyed by alarm id to avoid rebuilding the
+  // whole list (keeps scroll offset intact)
+  const byId = new Map([...entries.querySelectorAll('.entry')].map(e => [e.dataset.id, e]));
+  const list = [];
   for (const o of prefs.alarms.sort((a, b) => {
     return a.time.hours * 60 + a.time.minutes - (b.time.hours * 60 + b.time.minutes);
   })) {
-    const {id, time, name, days} = o;
-    const clone = document.importNode(t.content, true);
-    // time
-    clone.querySelector('[data-id="time"]').textContent =
-      ('0' + time.hours).substr(-2) + ':' +
-      ('0' + time.minutes).substr(-2);
-    // next occurance
-    const times = alarm.convert(time, days);
-    const date = clone.querySelector('[data-id="date"]');
-    const active = alarms.some(a => a.name.startsWith(id));
-    if (days.length) {
-      const map = {
-        0: 'Su',
-        1: 'M',
-        2: 'Tu',
-        3: 'W',
-        4: 'Th',
-        5: 'F',
-        6: 'Sa'
-      };
-      // while a once-alarm is enabled, its fired one-shot slots vanish
-      // from chrome.alarms - strike those weekdays. an OFF alarm has no
-      // slots either (cleared, not fired), so it renders without strikes
-      const pending = new Set(
-        alarms.filter(a => a.name.startsWith(id))
-          .map(a => new Date(a.scheduledTime).getDay())
-      );
-      date.textContent = '';
-      for (const d of days) {
-        const span = document.createElement('span');
-        span.textContent = map[d];
-        if (o.once && active && !pending.has(Number(d))) {
-          span.classList.add('fired');
-        }
-        date.appendChild(span);
-      }
-      date.classList.add('range');
+    let entry = byId.get(o.id);
+    if (entry) {
+      byId.delete(o.id);
     }
     else {
-      date.textContent = alarm.format(new Date(times[0]));
+      entry = document.importNode(t.content, true).querySelector('.entry');
     }
-    const entry = clone.querySelector('.entry');
-    entry.times = times;
-    entry.o = o;
-    entry.dataset.id = id;
-    entry.setAttribute('disabled', active === false);
-    clone.querySelector('input[type="checkbox"]').checked = active;
-    entry.title = clone.querySelector('[data-id="description"]').textContent = name || '';
-
-    entry.querySelector('[data-id="once"]').textContent = o.once ? 'once' : '';
-    entries.appendChild(clone);
+    alarm.update(entry, o, alarms);
+    list.push(entry);
   }
+  // remove entries whose alarm is gone
+  for (const entry of byId.values()) {
+    entry.remove();
+  }
+  // reorder; only move nodes that are out of position
+  list.forEach((entry, index) => {
+    if (entries.children[index] !== entry) {
+      entries.insertBefore(entry, entries.children[index] || null);
+    }
+  });
   alarm.toast();
   callback();
 }));
@@ -305,7 +329,6 @@ alarm.toast = () => {
     chrome.storage.local.set({
       alarms: prefs.alarms
     }, () => {
-      document.querySelector('.alarm div[data-id="entries"]').textContent = '';
       init(() => {
         if (restart) {
           const input = document.querySelector(`.alarm .entry[data-id="${id}"] input[type=checkbox]`);
@@ -382,7 +405,6 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('dblcli
 chrome.storage.onChanged.addListener(ps => {
   if (ps['alarms-storage']) {
     alarm.toast();
-    document.querySelector('.alarm div[data-id="entries"]').textContent = '';
     init();
   }
 });

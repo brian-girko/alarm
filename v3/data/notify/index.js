@@ -80,6 +80,7 @@ audio.play = (id, src, n = 5, volume = 0.8) => {
   }, false);
   audio.cache[id] = e;
   e.src = '/' + src;
+
   return e.play();
 };
 audio.stop = id => {

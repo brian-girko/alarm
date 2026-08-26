@@ -299,6 +299,7 @@ body[data-alarm="view"] div[data-id="edit"] {
   overflow: auto;
   scrollbar-color: var(--bg-scrollbar) transparent;
   scrollbar-width: thin;
+  padding-block-end: 10px;
 }
 body[data-alarm="edit"] div[data-id="content"] {
   display: none;
