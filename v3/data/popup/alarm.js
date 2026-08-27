@@ -198,8 +198,9 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
       entries.insertBefore(entry, entries.children[index] || null);
     }
   });
-  // snoozes badge
-  const snoozes = alarms.filter(a => a.name.startsWith('audio-')).length;
+  // unique snoozes badge
+  const uniques = new Set(alarms.filter(a => a.name.startsWith('audio-')).map(o => o.name.split('/')[0]));
+  const snoozes = uniques.size;
   document.querySelector('#snoozes [data-id="badge"]').textContent = snoozes || '';
   document.getElementById('kill-snoozes').disabled = snoozes === 0;
   alarm.toast();

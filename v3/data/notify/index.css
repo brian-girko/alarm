@@ -50,6 +50,7 @@ a:visited {
 }
 select {
   background: transparent;
+  field-sizing: content;
 }
 
 body > img {
@@ -59,14 +60,12 @@ body > img {
 }
 body > div {
   display: grid;
-  grid-template-rows: 1fr min-content;
+  grid-template-rows: min-content 1fr min-content;
   border-left: solid 2px #e6e6e6;
-  padding-left: 10px;
 }
-div[hidden] {
-  display: none !important;
+h1 {
+  margin-block: 5px;
 }
-
 p {
   white-space: pre;
 }
@@ -75,17 +74,25 @@ p {
   display: flex;
   justify-content: end;
   padding: 10px;
+
+  div {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+}
+
+#content {
+  padding: 10px;
 }
 
 #sound-alert {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9;
   padding: 8px 10px;
   font-size: 12px;
   color: #664d03;
   background-color: #fff3cd;
   border-bottom: solid 1px #ffec99;
+}
+#sound-alert:empty {
+  visibility: hidden;
 }

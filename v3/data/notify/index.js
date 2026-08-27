@@ -12,6 +12,11 @@ else {
   document.querySelector('img').src = 'imgs/stopwatch.svg';
 }
 
+if (args.get('snooze') === 'true') {
+  document.getElementById('sound-alert').textContent =
+    'Unless you close this window, it will snooze twice—5 and 10 minutes from now.';
+}
+
 chrome.runtime.sendMessage({
   method: 'position',
   screen: {
@@ -30,6 +35,7 @@ const stopOffscreen = () => chrome.runtime.sendMessage({
   method: 'stop-offscreen-audio'
 }, () => chrome.runtime.lastError);
 
+let snoozed;
 document.getElementById('snooze').onclick = () => {
   const buttonIndex = document.getElementById('range').selectedIndex + 1;
 
@@ -39,7 +45,9 @@ document.getElementById('snooze').onclick = () => {
     info: {
       when: Date.now() + buttonIndex * 5 * 60 * 1000
     }
-  }, () => setTimeout(() => window.close(), 100));
+  }, () => {
+    snoozed = setTimeout(() => window.close(), 100);
+  });
   stopOffscreen();
 };
 
@@ -49,6 +57,9 @@ document.getElementById('done').onclick = () => {
 };
 
 document.getElementById('clean').onclick = e => {
+  clearTimeout(snoozed);
+  snoozed = undefined;
+
   const v = e.target.value;
   e.target.value = 'Clearing...';
   chrome.runtime.sendMessage({
@@ -119,8 +130,6 @@ const showSoundAlert = errors => {
         volume: Number(args.get('volume')),
         repeats: Number(args.get('repeats'))
       }, ok => {
-        console.log(ok);
-
         if (chrome.runtime.lastError) {
           showSoundAlert([err, chrome.runtime.lastError.message]);
         }
@@ -139,6 +148,12 @@ window.onblur = () => setTimeout(() => chrome.runtime.sendMessage({
 
 // messaging
 chrome.runtime.onMessage.addListener((request, sender, resposne) => {
+  // there is no user action so we need to keep snoozed
+  // we are going to set a number other than zero. since window is closing there is no need to reset it
+  if (request.method === 'remove-notification' || request.method === 'remove-all-notifications') {
+    snoozed = 1;
+  }
+
   if (request.method === 'remove-notification') {
     if (request.name === args.get('name')) {
       resposne(true);
@@ -152,7 +167,14 @@ chrome.runtime.onMessage.addListener((request, sender, resposne) => {
   }
 });
 
-window.onbeforeunload = () => stopOffscreen();
+window.onbeforeunload = () => {
+  // we do not need snooze after user attention
+  // unless this window is closed by pressing the snooze button
+  if (!snoozed) {
+    document.getElementById('clean').click();
+  }
+  stopOffscreen();
+};
 
 // persist
 document.getElementById('range').onchange = e => chrome.storage.local.set({

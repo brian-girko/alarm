@@ -115,18 +115,18 @@ body[data-tab="timer"] header h1:not([for="timer"]) {
   display: none;
 }
 header input[type=button] {
-  background-size: 24px;
   background-position: center center;
   background-repeat: no-repeat;
   background-color: transparent;
   filter: invert(100%);
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   cursor: pointer;
   padding: 0;
 }
 header input[type=button]#plus {
   background-image: url('icons/plus.svg');
+  background-size: 30px;
   margin-left: 10px;
 }
 header #snoozes {
@@ -134,8 +134,8 @@ header #snoozes {
   margin-left: 10px;
 }
 header input[type=button]#kill-snoozes {
-  background: url('icons/bell-off.svg') center center no-repeat;
-  background-size: 26px;
+  background: url('icons/snooze.svg') center center no-repeat;
+  background-size: 24px;
 }
 header #snoozes [data-id=badge] {
   position: absolute;
@@ -159,7 +159,7 @@ header input[type=button]#kill-snoozes[disabled] {
   opacity: 0.4;
   cursor: default;
 }
-body:not([data-tab="alarm"]) header input[type=button] {
+body:not([data-tab="alarm"]) #plus {
   display: none;
 }
 body[data-tab="alarm"][data-alarm="edit"] header input[type=button] {

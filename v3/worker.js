@@ -18,6 +18,7 @@ const notifications = {
     args.set('sound', opts.sound);
     args.set('volume', opts.volume);
     args.set('repeats', opts.repeats);
+    args.set('snooze', opts.snooze);
 
     const prefs = await chrome.storage.local.get({
       'notify-position': 'center' // center, br, tr
@@ -178,13 +179,14 @@ const normalizeStorage = (defs, storage, from = Date.now()) => {
 
 const alarms = {
   async fire({name}) {
-    const set = (name, title, sound, repeats, volume, message = `Time's up`) => notifications.clear(name, () => {
+    const set = (name, title, sound, repeats, volume, message = `Time's up`, snooze = false) => notifications.clear(name, () => {
       notifications.create(name, {
         title,
         message: message + '\n\n' + (new Date()).toLocaleString(),
         sound,
         volume,
-        repeats
+        repeats,
+        snooze
       });
     });
     if (name.startsWith('timer-')) {
@@ -200,7 +202,7 @@ const alarms = {
       const prefs = await chrome.storage.local.get({
         'alarms': [],
         'src-alarm': 'data/sounds/1.mp3',
-        'repeats-alarm': 5,
+        'repeats-alarm': 5, // number of times sound loops with "alarm" sound
         'volume-alarm': 0.8
       });
       const o = prefs.alarms.filter(a => a.id === id).shift();
@@ -212,7 +214,7 @@ const alarms = {
           when: Date.now() + 10 * 60 * 1000
         });
       }
-      set(id, 'Alarm', prefs['src-alarm'], prefs['repeats-alarm'], prefs['volume-alarm'], o?.name);
+      set(id, 'Alarm', prefs['src-alarm'], prefs['repeats-alarm'], prefs['volume-alarm'], o?.name, o?.snooze);
       // reschedule upcoming occurrences of recurring alarms from their
       // wall-clock definition; once-alarms must stay one-shot (their
       // remaining slots are already scheduled and drift-free). stale slot
@@ -229,15 +231,15 @@ const alarms = {
       const prefs = await chrome.storage.local.get({
         'alarms': [],
         'src-misc': 'data/sounds/5.mp3',
-        'repeats-misc': 5,
+        'repeats-misc': 5, // number of times sound loops with "misc" sound
         'volume-misc': 0.8
       });
       let title = 'Misc';
       if (id.startsWith('alarm-')) {
-        title = 'Alarm';
+        title = 'Alarm Snoozed';
       }
       else if (id.startsWith('timer-')) {
-        title = 'Timer';
+        title = 'Timer Snoozed';
       }
       const o = prefs.alarms.filter(a => a.id === id).shift();
       set(id, title, prefs['src-misc'], prefs['repeats-misc'], prefs['volume-misc'], o?.name);

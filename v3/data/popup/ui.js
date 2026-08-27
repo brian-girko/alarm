@@ -25,24 +25,23 @@ document.getElementById('plus').addEventListener('click', () => {
 });
 
 // remove all snoozes
-document.getElementById('kill-snoozes').addEventListener('click', () => {
-  chrome.runtime.sendMessage({
+document.getElementById('kill-snoozes').addEventListener('click', async () => {
+  const alarms = await chrome.runtime.sendMessage({
     method: 'get-alarms'
-  }, alarms => {
-    const jobs = alarms
-      .filter(a => a.name.startsWith('audio-'))
-      .map(a => ({
-        method: 'clear-alarm',
-        name: a.name
-      }));
-    if (jobs.length !== 0 &&
-      confirm(`Remove ${jobs.length} snooze${jobs.length > 1 ? 's' : ''}?`) === true) {
+  });
+  const jobs = alarms.filter(a => a.name.startsWith('audio-')).map(a => ({
+    method: 'clear-alarm',
+    name: a.name
+  }));
+  if (jobs.length) {
+    const uniques = new Set(alarms.filter(a => a.name.startsWith('audio-')).map(o => o.name.split('/')[0]));
+    if (confirm(`Remove ${uniques.size} snooze${uniques.size > 1 ? 's' : ''}?`)) {
       chrome.runtime.sendMessage({
         method: 'batch',
         jobs
       });
     }
-  });
+  }
 });
 
 // tools
