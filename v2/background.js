@@ -190,6 +190,9 @@ chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
 });
 
 const onMessage = (request, sender, respose) => {
+  if (sender.id !== chrome.runtime.id) {
+    return;
+  }
   if (request.method === 'set-alarm') {
     alarms.create(request.name, request.info);
   }
