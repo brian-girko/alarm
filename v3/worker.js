@@ -1,5 +1,7 @@
 'use strict';
 
+const BADGE_TICK = 'badge-tick'; // helper alarm that refreshes the toolbar badge
+
 const notifications = {
   clear(name, c) {
     chrome.runtime.sendMessage({
@@ -249,7 +251,7 @@ const alarms = {
     chrome.alarms.get(name, c);
   },
   getAll(c) {
-    chrome.alarms.getAll(c);
+    chrome.alarms.getAll(as => c(as.filter(a => a.name !== BADGE_TICK)));
   }
 };
 
@@ -276,21 +278,23 @@ const alarms = {
             cache.clear.add(a.name);
           }
 
+          const jobs = [];
           // clear alarms
           for (const name of cache.clear) {
             if (cache.create.has(name) === false) {
-              chrome.alarms.clear(name);
+              jobs.push(chrome.alarms.clear(name));
               delete prefs['alarms-storage'][name];
             }
           }
           cache.clear.clear();
           // set new alarms
           for (const [name, info] of cache.create) {
-            chrome.alarms.create(name, info);
+            jobs.push(chrome.alarms.create(name, info));
             prefs['alarms-storage'][name] = info;
           }
           cache.create.clear();
           chrome.storage.local.set(prefs);
+          Promise.allSettled(jobs).then(() => badge.update());
         });
       });
     }, 100);
@@ -340,20 +344,80 @@ const alarms = {
     for (const [name, info] of Object.entries(prefs['alarms-storage'])) {
       const o = await chrome.alarms.get(name);
       if (!o || (name.startsWith('alarm-') && o.scheduledTime !== info.when)) {
-        chrome.alarms.create(name, info);
+        await chrome.alarms.create(name, info);
         console.info('Force Creating a new Alarm', name, info);
       }
     }
     if (modified) {
       chrome.storage.local.set(prefs);
     }
+    badge.update();
   };
   chrome.runtime.onStartup.addListener(once);
   chrome.runtime.onInstalled.addListener(once);
 }
 
+/* toolbar badge: whole minutes left on the running timer */
+const BADGE_COLOR = '#1a73e8'; // blue of the Chrome logo centre
+const badge = {
+  async paint() {
+    const prefs = await chrome.storage.local.get({'badge-color': BADGE_COLOR});
+    const color = /^#[0-9a-f]{6}$/i.test(prefs['badge-color']) ? prefs['badge-color'] : BADGE_COLOR;
+    // black digits on light backgrounds, white on dark ones
+    const [r, g, b] = [1, 3, 5].map(i => parseInt(color.substr(i, 2), 16));
+    const light = 0.299 * r + 0.587 * g + 0.114 * b > 160;
+    chrome.action.setBadgeBackgroundColor({color});
+    chrome.action.setBadgeTextColor?.({color: light ? '#000000' : '#ffffff'});
+  },
+  async update() {
+    clearTimeout(badge.id);
+    const [a, prefs] = await Promise.all([
+      chrome.alarms.get('timer-1'),
+      chrome.storage.local.get({'badge-enabled': false})
+    ]);
+    const left = a && prefs['badge-enabled'] ? a.scheduledTime - Date.now() : 0;
+
+    if (left <= 0) {
+      chrome.action.setBadgeText({text: ''});
+      chrome.alarms.clear(BADGE_TICK);
+      return;
+    }
+    // 25:41 -> "25"; the whole last minute (and 1:xx) stays "1" until the timer fires
+    const minutes = Math.max(1, Math.floor(left / 60000));
+    await badge.paint();
+    chrome.action.setBadgeText({text: String(minutes)});
+
+    if (left < 2 * 60000) { // already "1" until the end; firing timer-1 clears it
+      chrome.alarms.clear(BADGE_TICK);
+      return;
+    }
+    // wake up right after the next minute boundary
+    const delay = left % 60000 + 250;
+    chrome.alarms.create(BADGE_TICK, {when: Date.now() + delay});
+    // chrome may postpone alarms closer than 30s; the worker is still alive, so cover it
+    if (delay < 30000) {
+      badge.id = setTimeout(badge.update, delay);
+    }
+  }
+};
+
+chrome.storage.onChanged.addListener(ps => {
+  if (ps['badge-enabled']) {
+    badge.update();
+  }
+  else if (ps['badge-color']) {
+    badge.paint();
+  }
+});
+
 chrome.alarms.onAlarm.addListener(a => {
+  if (a.name === BADGE_TICK) {
+    return badge.update();
+  }
   alarms.fire(a);
+  if (a.name.startsWith('timer-')) {
+    badge.update();
+  }
 });
 
 /* handling outdated alarms */
@@ -365,7 +429,7 @@ chrome.idle.onStateChanged.addListener(state => {
       chrome.storage.local.get({'alarms': []})
     ]).then(([os, prefs]) => {
       const defs = new Map(prefs.alarms.map(a => [a.id, a]));
-      for (const o of os) {
+      for (const o of os.filter(o => o.name !== BADGE_TICK)) {
         if (o.scheduledTime < now) {
           const def = o.name.startsWith('alarm-') ? defs.get(o.name.split(':')[0]) : null;
           let info;
@@ -552,9 +616,7 @@ chrome.storage.onChanged.addListener(ps => {
 chrome.contextMenus.onClicked.addListener(info => {
   if (info.menuItemId === 'remove-all-alarms') {
     alarms.getAll(as => {
-      for (const a of as) {
-        chrome.alarms.clear(a.name);
-      }
+      Promise.allSettled(as.map(a => chrome.alarms.clear(a.name))).then(() => badge.update());
     });
     chrome.storage.local.set({
       'alarms-storage': {}
@@ -598,3 +660,6 @@ chrome.contextMenus.onClicked.addListener(info => {
     setUninstallURL(page + '?rd=feedback&name=' + encodeURIComponent(name) + '&version=' + version);
   }
 }
+
+// worker (re)started: redraw the badge from the current timer state
+badge.update();

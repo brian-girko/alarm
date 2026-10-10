@@ -8,7 +8,9 @@ chrome.storage.local.get({
   'volume-misc': 0.8,
   'mode': 'bp',
   'notify-position': 'center',
-  'notify-on-top': false
+  'notify-on-top': false,
+  'badge-enabled': false,
+  'badge-color': '#1a73e8'
 }, prefs => {
   document.getElementById('volume-timer').value = prefs['volume-timer'] * 100;
   document.getElementById('volume-alarm').value = prefs['volume-alarm'] * 100;
@@ -16,6 +18,12 @@ chrome.storage.local.get({
   document.getElementById('mode').value = prefs.mode;
   document.getElementById('notify-position').value = prefs['notify-position'];
   document.getElementById('notify-on-top').checked = prefs['notify-on-top'];
+  document.getElementById('badge-enabled').checked = prefs['badge-enabled'];
+  document.getElementById('badge-color').value = prefs['badge-color'];
+  document.getElementById('badge-color').disabled = !prefs['badge-enabled'];
+});
+document.getElementById('badge-enabled').addEventListener('change', e => {
+  document.getElementById('badge-color').disabled = !e.target.checked;
 });
 
 document.getElementById('save').addEventListener('submit', e => {
@@ -26,7 +34,9 @@ document.getElementById('save').addEventListener('submit', e => {
     'volume-misc': document.getElementById('volume-misc').value / 100,
     'mode': document.getElementById('mode').value,
     'notify-position': document.getElementById('notify-position').value,
-    'notify-on-top': document.getElementById('notify-on-top').checked
+    'notify-on-top': document.getElementById('notify-on-top').checked,
+    'badge-enabled': document.getElementById('badge-enabled').checked,
+    'badge-color': document.getElementById('badge-color').value
   }, () => {
     toast.textContent = 'Options saved!';
     window.setTimeout(() => toast.textContent = '', 750);
