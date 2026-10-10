@@ -373,7 +373,7 @@ const badge = {
     clearTimeout(badge.id);
     const [a, prefs] = await Promise.all([
       chrome.alarms.get('timer-1'),
-      chrome.storage.local.get({'badge-enabled': false})
+      chrome.storage.local.get({'badge-enabled': true})
     ]);
     const left = a && prefs['badge-enabled'] ? a.scheduledTime - Date.now() : 0;
 
@@ -382,10 +382,11 @@ const badge = {
       chrome.alarms.clear(BADGE_TICK);
       return;
     }
-    // 25:41 -> "25"; the whole last minute (and 1:xx) stays "1" until the timer fires
+    // 25:41 -> "25m"; 90:00 -> "1h"; the whole last minute stays "1m" until the timer fires
     const minutes = Math.max(1, Math.floor(left / 60000));
+    const text = minutes < 100 ? minutes + 'm' : Math.floor(minutes / 60) + 'h';
     await badge.paint();
-    chrome.action.setBadgeText({text: String(minutes)});
+    chrome.action.setBadgeText({text});
 
     if (left < 2 * 60000) { // already "1" until the end; firing timer-1 clears it
       chrome.alarms.clear(BADGE_TICK);

@@ -9,7 +9,7 @@ chrome.storage.local.get({
   'mode': 'bp',
   'notify-position': 'center',
   'notify-on-top': false,
-  'badge-enabled': false,
+  'badge-enabled': true,
   'badge-color': '#1a73e8'
 }, prefs => {
   document.getElementById('volume-timer').value = prefs['volume-timer'] * 100;
