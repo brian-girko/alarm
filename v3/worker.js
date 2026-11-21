@@ -361,13 +361,14 @@ const badge = {
       chrome.alarms.clear(BADGE_TICK);
       return;
     }
-    // 25:41 -> "25m"; 90:00 -> "1h"; the whole last minute stays "1m" until the timer fires
-    const minutes = Math.max(1, Math.floor(left / 60000));
+    // 25:41 -> "25m"; 90:00 -> "1h"; ceil counts the minute in progress,
+    // so a fresh 5m timer badges "5m" and the whole last minute stays "1m"
+    const minutes = Math.ceil(left / 60000);
     const text = minutes < 100 ? minutes + 'm' : Math.floor(minutes / 60) + 'h';
     await badge.paint();
     chrome.action.setBadgeText({text});
 
-    if (left < 2 * 60000) { // already "1" until the end; firing timer-1 clears it
+    if (left <= 60000) { // already "1" until the end; firing timer-1 clears it
       chrome.alarms.clear(BADGE_TICK);
       return;
     }
