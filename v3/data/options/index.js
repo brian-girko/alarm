@@ -2,6 +2,13 @@
 
 const toast = document.getElementById('toast');
 
+// preferences are also written by the unvalidated import; keep volumes in the
+// 0..1 range HTMLMediaElement.volume requires (garbage falls back to 0.8)
+const clamp01 = v => {
+  v = Number(v);
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8;
+};
+
 chrome.storage.local.get({
   'volume-timer': 0.8,
   'volume-alarm': 0.8,
@@ -12,9 +19,9 @@ chrome.storage.local.get({
   'badge-enabled': true,
   'badge-color': '#1a73e8'
 }, prefs => {
-  document.getElementById('volume-timer').value = prefs['volume-timer'] * 100;
-  document.getElementById('volume-alarm').value = prefs['volume-alarm'] * 100;
-  document.getElementById('volume-misc').value = prefs['volume-misc'] * 100;
+  document.getElementById('volume-timer').value = clamp01(prefs['volume-timer']) * 100;
+  document.getElementById('volume-alarm').value = clamp01(prefs['volume-alarm']) * 100;
+  document.getElementById('volume-misc').value = clamp01(prefs['volume-misc']) * 100;
   document.getElementById('mode').value = prefs.mode;
   document.getElementById('notify-position').value = prefs['notify-position'];
   document.getElementById('notify-on-top').checked = prefs['notify-on-top'];
@@ -29,9 +36,9 @@ document.getElementById('badge-enabled').addEventListener('change', e => {
 document.getElementById('save').addEventListener('submit', e => {
   e.preventDefault();
   chrome.storage.local.set({
-    'volume-timer': document.getElementById('volume-timer').value / 100,
-    'volume-alarm': document.getElementById('volume-alarm').value / 100,
-    'volume-misc': document.getElementById('volume-misc').value / 100,
+    'volume-timer': clamp01(document.getElementById('volume-timer').value / 100),
+    'volume-alarm': clamp01(document.getElementById('volume-alarm').value / 100),
+    'volume-misc': clamp01(document.getElementById('volume-misc').value / 100),
     'mode': document.getElementById('mode').value,
     'notify-position': document.getElementById('notify-position').value,
     'notify-on-top': document.getElementById('notify-on-top').checked,

@@ -73,6 +73,13 @@ const audio = {};
 audio.cache = {};
 audio.play = (id, src, n = 5, volume = 0.8) => {
   audio.stop(id);
+  // HTMLMediaElement.volume throws IndexSizeError outside 0..1; the value
+  // originates from storage, which imported preferences can poison
+  volume = Number(volume);
+  if (!Number.isFinite(volume)) {
+    volume = 0.8;
+  }
+  volume = Math.min(1, Math.max(0, volume));
   if (!volume) {
     return;
   }
@@ -102,8 +109,8 @@ audio.stop = id => {
     delete audio.cache[id];
   }
 };
-// sound alert banner; only revealed when both the in-window player and
-// the offscreen fallback failed to start
+// sound alert banner; revealed when the in-window player failed to start,
+// either synchronously or after the offscreen fallback failed as well
 const soundAlert = document.getElementById('sound-alert');
 const showSoundAlert = errors => {
   const details = errors.filter(Boolean).map(e => {
@@ -119,7 +126,20 @@ const showSoundAlert = errors => {
 };
 
 {
-  const p = audio.play(args.get('name'), args.get('sound'), Number(args.get('repeats')), Number(args.get('volume')));
+  // storage is an untrusted boundary (e.g. imported preferences): clamp into
+  // the 0..1 range HTMLMediaElement.volume requires; garbage falls back to 0.8
+  const v = Number(args.get('volume'));
+  const volume = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8;
+  let p;
+  try {
+    p = audio.play(args.get('name'), args.get('sound'), Number(args.get('repeats')), volume);
+  }
+  catch (err) {
+    // a synchronous failure must not kill this script: the listeners
+    // registered below (remove-notification, snooze cleanup) are load-bearing
+    console.warn('in-window playback failed', err);
+    showSoundAlert([err]);
+  }
   if (p && p.catch) {
     p.catch(err => {
       console.warn('in-window playback failed', err);
@@ -127,7 +147,7 @@ const showSoundAlert = errors => {
         method: 'play-offscreen',
         name: args.get('name'),
         src: args.get('sound'),
-        volume: Number(args.get('volume')),
+        volume,
         repeats: Number(args.get('repeats'))
       }, ok => {
         if (chrome.runtime.lastError) {

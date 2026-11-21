@@ -20,7 +20,10 @@ chrome.runtime.onMessage.addListener((request, sender, respose) => {
 
   if (request.method === 'play-audio') {
     stop();
-    const volume = Number(request.volume);
+    const v = Number(request.volume);
+    // HTMLMediaElement.volume throws outside 0..1; the value originates
+    // from (possibly imported) preferences
+    const volume = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8;
     const repeats = Number(request.repeats);
     if (!volume || !request.src) {
       return respose(false);
