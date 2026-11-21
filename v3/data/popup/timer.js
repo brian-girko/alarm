@@ -7,9 +7,10 @@ const hours = document.querySelector('.timer input[data-id="hours"]');
 const minutes = document.querySelector('.timer input[data-id="minutes"]');
 const seconds = document.querySelector('.timer input[data-id="seconds"]');
 
-// add leading zeros and force range
+// add leading zeros and force range; a cleared (NaN) field counts as 0
 const fix = (e, min = 0, max = 23) => {
-  e.target.value = Math.max(min, Math.min(max, e.target.valueAsNumber)).toString().padStart(2, '0');
+  const n = Number.isFinite(e.target.valueAsNumber) ? e.target.valueAsNumber : min;
+  e.target.value = Math.max(min, Math.min(max, n)).toString().padStart(2, '0');
 };
 hours.addEventListener('change', e => fix(e, 0, 99));
 minutes.addEventListener('change', e => fix(e, 0, 59));
@@ -50,12 +51,20 @@ timer.tick = (once = false) => {
   }
 };
 
-timer.start = () => {
-  hours.value = timer.format(Math.max(0, hours.value));
-  minutes.value = timer.format(Math.min(59, Math.max(0, minutes.value)));
-  seconds.value = timer.format(Math.min(59, Math.max(0, seconds.value)));
+// parse a field into a clamped non-negative integer; empty/invalid counts as 0
+const toInt = (input, max = Infinity) => {
+  const n = Number(input.value);
+  const v = Math.min(max, Math.max(0, Number.isFinite(n) ? n : 0));
+  input.value = timer.format(v);
+  return v;
+};
 
-  const when = ((Number(hours.value) * 60 + Number(minutes.value)) * 60 + Number(seconds.value)) * 1000;
+timer.start = () => {
+  const h = toInt(hours); // hours have no upper bound (no limit to 24 hours)
+  const m = toInt(minutes, 59);
+  const s = toInt(seconds, 59);
+
+  const when = (h * 3600 + m * 60 + s) * 1000;
 
   if (when) {
     timer.resume(Date.now() + when, 1000);
