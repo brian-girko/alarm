@@ -253,7 +253,10 @@ const alarms = {
             ...cache.create.keys()
           ].map(s => s.split(':')[0]);
 
-          for (const a of as.filter(a => keys.some(key => a.name.includes(key)))) {
+          // slot names are '<id>:<index>', so require the ':' delimiter to
+          // avoid sweeping prefix-colliding ids ('alarm-0.8' vs 'alarm-0.81');
+          // colon-less names (timer-1, snoozes) must equal their key exactly
+          for (const a of as.filter(a => keys.some(key => a.name === key || a.name.startsWith(key + ':')))) {
             cache.clear.add(a.name);
           }
 

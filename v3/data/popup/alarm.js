@@ -47,7 +47,9 @@ const scheduleEntry = (entry, on) => chrome.runtime.sendMessage({
 }, alarms => {
   const jobs = [];
   // remove old alarms
-  alarms.filter(a => a.name.startsWith(entry.dataset.id)).forEach(a => jobs.push({
+  // match the ':' slot delimiter so prefix-colliding ids
+  // ('alarm-0.8' vs 'alarm-0.81') cannot cross-clear each other
+  alarms.filter(a => a.name.startsWith(entry.dataset.id + ':')).forEach(a => jobs.push({
     method: 'clear-alarm',
     name: a.name
   }));
@@ -79,7 +81,7 @@ container.addEventListener('remove', ({target: entry}) => {
     alarms: []
   }, prefs => {
     chrome.storage.local.set({
-      alarms: prefs.alarms.filter(a => a.id.startsWith(entry.dataset.id) === false)
+      alarms: prefs.alarms.filter(a => a.id !== entry.dataset.id)
     });
   });
 });

@@ -196,13 +196,13 @@ class AlarmEntry extends HTMLElement {
       ('0' + time.minutes).substr(-2);
     // upcoming occurrence(s)
     const slots = schedule.slots(o);
-    const active = alarms.some(a => a.name.startsWith(id));
+    const active = alarms.some(a => a.name.startsWith(id + ':'));
     // scheduled epochs of this alarm's live slots; a fired one-shot ("once")
     // slot vanishes from chrome.alarms - render that weekday/date struck
     // through. an OFF alarm has no slots either (cleared, not fired), so it
     // renders without strikes
     const times = new Set(
-      alarms.filter(a => a.name.startsWith(id))
+      alarms.filter(a => a.name.startsWith(id + ':'))
         .map(a => a.scheduledTime)
     );
     const pending = new Set(
