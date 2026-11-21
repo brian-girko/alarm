@@ -53,9 +53,6 @@ document.addEventListener('click', e => {
     if (command === 'cancel') {
       document.body.dataset.alarm = 'view';
     }
-    else if (command === 'remove') {
-      alarm.remove(e.target);
-    }
     else if (command === 'remove-date') {
       alarm['remove-date'](e.target);
     }

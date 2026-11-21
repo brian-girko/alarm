@@ -241,54 +241,6 @@ body[data-tab="timer"] #content {
 .alarm div[data-id="toast"] h1 {
   padding: 0 30px;
 }
-.alarm .entry {
-  background-color: var(--bg-dark-color);
-  padding: 20px 30px;
-  position: relative;
-  gap: 10px;
-}
-.alarm .entry [data-id="time"] {
-  font-weight: 300;
-  text-align: left;
-}
-.alarm .entry [data-id="description"] {
-  text-align: left;
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.alarm .entry[disabled=false] [data-id="description"] {
-  color: var(--color-dark);
-}
-.alarm .entry [data-id="date"].range {
-  color: var(--color-pink);
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.alarm .entry [data-id="date"] .fired {
-  text-decoration: line-through;
-  opacity: 0.4;
-}
-.alarm .entry:not(:last-child) {
-  margin-bottom: 10px;
-}
-.alarm .entry[disabled=true] {
-  opacity: 0.5;
-}
-.alarm .entry [data-command="remove"] {
-  width: 16px;
-  height: 16px;
-  background: url(icons/close.svg) center center no-repeat;
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  background-size: 16px;
-  filter: invert(1);
-  padding: 0;
-}
-
 /* alarm settings */
 .alarm div[data-id="edit"] {
   margin: 0 10px;
@@ -455,20 +407,6 @@ body[data-alarm="view"] div[data-id="edit"] {
 body[data-alarm="edit"] div[data-id="content"] {
   display: none;
 }
-.alarm .entry {
-  position: relative;
-}
-.alarm .entry [data-id=once] {
-  position: absolute;
-  top: 0;
-  left: 0;
-  background-color: var(--bg-pink-color);
-  padding: 0 10px;
-}
-.alarm .entry [data-id=once]:empty {
-  display: none;
-}
-
 .stopwatch {
   flex-direction: column;
 }

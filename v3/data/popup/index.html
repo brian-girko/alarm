@@ -33,16 +33,6 @@
           <h1>Alarm in 14 hours 49 minutes</h1>
           <h3>Mon 26 Aug, 06:00</h3>
         </div>
-        <template>
-          <div class="entry" hbox align="center" disabled=true>
-            <span class="large" data-id="time">00:00</span>
-            <span class="small" data-id="description">This is a description</span>
-            <span class="small" data-id="once">once</span>
-            <span class="small" data-id="date">Mon, 00 Aug</span>
-            <input type="checkbox" class="switch">
-            <input type="button" data-command="remove">
-          </div>
-        </template>
         <div data-id="entries" flex="1"></div>
       </div>
       <div data-id="edit" vbox flex="1" data-repeat="once">
@@ -169,6 +159,7 @@
     <label for="timer">Timer</label>
   </footer>
   <script type="text/javascript" src="../schedule.js"></script>
+  <script type="text/javascript" src="alarm-entry.js"></script>
   <script type="text/javascript" src="alarm.js"></script>
   <script type="text/javascript" src="stopwatch.js"></script>
   <script type="text/javascript" src="timer.js"></script>

@@ -38,125 +38,62 @@ alarm.format = (d, time = false) => {
   return day + (time ? ' ' + ('0' + d.getHours()).substr(-2) + ':' + ('0' + d.getMinutes()).substr(-2) : '');
 };
 
-// enable/disable an entry: clear all its slots, then register the upcoming
-// ones computed from the wall-clock definition (repeating single-slot modes
-// get rescheduled on fire; once slots simply expire)
-document.querySelector('.alarm div[data-id="content"]').addEventListener('change', ({target}) => {
-  const entry = target.closest('.entry');
-  if (entry) {
-    const jobs = [];
-    entry.setAttribute('disabled', target.checked ? false : true);
-
-    chrome.runtime.sendMessage({
-      method: 'get-alarms'
-    }, alarms => {
-      // remove old alarms
-      alarms.filter(a => a.name.startsWith(entry.dataset.id)).forEach(a => jobs.push({
-        method: 'clear-alarm',
-        name: a.name
-      }));
-      // set new alarms
-      if (target.checked) {
-        schedule.slots(entry.o).forEach((info, index) => jobs.push({
-          method: 'set-alarm',
-          info,
-          name: entry.dataset.id + ':' + index
-        }));
-      }
-      chrome.runtime.sendMessage({
-        method: 'batch',
-        jobs
-      });
-    });
+// clear all live slots of an entry, then register the upcoming ones computed
+// from the wall-clock definition (repeating single-slot modes get
+// rescheduled on fire; once slots simply expire). the entry owns its
+// checked/disabled view state and emits "toggle" for this model side
+const scheduleEntry = (entry, on) => chrome.runtime.sendMessage({
+  method: 'get-alarms'
+}, alarms => {
+  const jobs = [];
+  // remove old alarms
+  alarms.filter(a => a.name.startsWith(entry.dataset.id)).forEach(a => jobs.push({
+    method: 'clear-alarm',
+    name: a.name
+  }));
+  // set new alarms
+  if (on) {
+    schedule.slots(entry.o).forEach((info, index) => jobs.push({
+      method: 'set-alarm',
+      info,
+      name: entry.dataset.id + ':' + index
+    }));
   }
+  chrome.runtime.sendMessage({
+    method: 'batch',
+    jobs
+  });
 });
 
-alarm.update = (entry, raw, alarms) => {
-  const o = entry.o = schedule.normalize(raw);
-  const {id, time, name} = o;
-  // time
-  entry.querySelector('[data-id="time"]').textContent =
-    ('0' + time.hours).substr(-2) + ':' +
-    ('0' + time.minutes).substr(-2);
-  // upcoming occurrence(s)
-  const slots = schedule.slots(o);
-  const date = entry.querySelector('[data-id="date"]');
-  const active = alarms.some(a => a.name.startsWith(id));
-  // scheduled epochs of this alarm's live slots; a fired one-shot ("once")
-  // slot vanishes from chrome.alarms - render that weekday/date struck
-  // through. an OFF alarm has no slots either (cleared, not fired), so it
-  // renders without strikes
-  const times = new Set(
-    alarms.filter(a => a.name.startsWith(id))
-      .map(a => a.scheduledTime)
-  );
-  const pending = new Set(
-    [...times].map(t => new Date(t).getDay())
-  );
-  date.textContent = '';
-  date.classList.remove('range');
-
-  const span = (text, fired = false) => {
-    const span = document.createElement('span');
-    span.textContent = text;
-    if (fired) {
-      span.classList.add('fired');
-    }
-    date.appendChild(span);
-  };
-
-  if (o.repeat === 'weekly') {
-    date.classList.add('range');
-    for (const d of (o.days || [])) {
-      span(PILL[Number(d)]);
-    }
+// <alarm-entry> custom events bubbling from each entry
+const container = document.querySelector('.alarm div[data-id="content"]');
+container.addEventListener('toggle', ({target: entry}) => scheduleEntry(entry, entry.active));
+container.addEventListener('edit', ({target: entry}) => alarm.edit(entry.o, entry.active));
+container.addEventListener('remove', ({target: entry}) => {
+  // clear the scheduled slots of an enabled alarm before dropping it
+  if (entry.active) {
+    scheduleEntry(entry, false);
   }
-  else if (o.repeat === 'once' && ((o.dates?.length ?? 0) + (o.days?.length ?? 0) > 0)) {
-    date.classList.add('range');
-    for (const {y, m, d} of (o.dates || [])) {
-      const when = schedule.resolve(Number(y), Number(m), Number(d), time);
-      span(d + ' ' + MONTHS[Number(m) - 1], active && times.has(when) === false);
-    }
-    for (const d of (o.days || [])) {
-      span(PILL[Number(d)], active && pending.has(Number(d)) === false);
-    }
-  }
-  else if (o.repeat === 'daily') {
-    date.classList.add('range');
-    span('Every day');
-  }
-  else if (o.repeat === 'monthly') {
-    date.classList.add('range');
-    span(o.day === 'last' ? 'Last day' : ordinal(Number(o.day)));
-  }
-  else if (o.repeat === 'yearly' && o.date) {
-    date.classList.add('range');
-    span(Number(o.date.d) + ' ' + MONTHS[Number(o.date.m) - 1]);
-  }
-  else {
-    // no explicit schedule info; show the next computed occurrence
-    date.textContent = slots.length ? alarm.format(new Date(slots[0].when)) : '';
-  }
-
-  entry.dataset.id = id;
-  entry.setAttribute('disabled', active === false);
-  entry.querySelector('input[type="checkbox"]').checked = active;
-  entry.title = entry.querySelector('[data-id="description"]').textContent = name || '';
-
-  entry.querySelector('[data-id="once"]').textContent = o.repeat === 'once' ? 'once' : '';
-};
+  entry.remove();
+  chrome.storage.local.get({
+    alarms: []
+  }, prefs => {
+    chrome.storage.local.set({
+      alarms: prefs.alarms.filter(a => a.id.startsWith(entry.dataset.id) === false)
+    });
+  });
+});
 
 const init = (callback = () => {}) => chrome.runtime.sendMessage({
   method: 'get-alarms'
 }, alarms => chrome.storage.local.get({
   'alarms': []
 }, prefs => {
-  const t = document.querySelector('.alarm template');
   const entries = document.querySelector('.alarm div[data-id="entries"]');
 
   // reuse existing entries keyed by alarm id to avoid rebuilding the
   // whole list (keeps scroll offset intact)
-  const byId = new Map([...entries.querySelectorAll('.entry')].map(e => [e.dataset.id, e]));
+  const byId = new Map([...entries.querySelectorAll('alarm-entry')].map(e => [e.dataset.id, e]));
   const list = [];
   for (const o of prefs.alarms.sort((a, b) => {
     return a.time.hours * 60 + a.time.minutes - (b.time.hours * 60 + b.time.minutes);
@@ -166,9 +103,9 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
       byId.delete(o.id);
     }
     else {
-      entry = document.importNode(t.content, true).querySelector('.entry');
+      entry = document.createElement('alarm-entry');
     }
-    alarm.update(entry, o, alarms);
+    entry.update(o, alarms);
     list.push(entry);
   }
   // remove entries whose alarm is gone
@@ -232,7 +169,7 @@ alarm.toast = () => {
       }
     }
     else {
-      if (document.querySelector('.entry')) {
+      if (document.querySelector('alarm-entry')) {
         h1.textContent = 'All alarms are off';
       }
       else {
@@ -454,10 +391,7 @@ alarm.toast = () => {
     }, () => {
       init(() => {
         if (restart) {
-          const input = document.querySelector(`.alarm .entry[data-id="${id}"] input[type=checkbox]`);
-          input.dispatchEvent(new Event('change', {
-            bubbles: true
-          }));
+          document.querySelector(`.alarm alarm-entry[data-id="${id}"]`)?.restart();
         }
       });
       document.body.dataset.alarm = 'view';
@@ -503,34 +437,6 @@ alarm.toast = () => {
     onchange();
   };
 }
-
-alarm.remove = target => {
-  const entry = target.closest('.entry');
-  if (entry) {
-    // remove alarms;
-    const input = entry.querySelector('input:checked');
-    if (input) {
-      input.click();
-    }
-    entry.remove();
-    chrome.storage.local.get({
-      alarms: []
-    }, prefs => {
-      chrome.storage.local.set({
-        alarms: prefs.alarms.filter(a => a.id.startsWith(entry.dataset.id) === false)
-      });
-    });
-  }
-};
-
-// edit from entry
-document.querySelector('.alarm div[data-id="content"]').addEventListener('dblclick', ({target}) => {
-  const entry = target.closest('.entry');
-  if (entry && target.classList.contains('switch') === false) {
-    const active = entry.querySelector('.switch').checked;
-    alarm.edit(entry.o, active);
-  }
-});
 
 // update toast and entries on "alarms-storage" change
 chrome.storage.onChanged.addListener(ps => {
