@@ -1,5 +1,9 @@
 'use strict';
 
+if (typeof importScripts === 'function') {
+  importScripts('data/schedule.js');
+}
+
 const BADGE_TICK = 'badge-tick'; // helper alarm that refreshes the toolbar badge
 
 const notifications = {
@@ -109,31 +113,11 @@ const offscreen = {
   }
 };
 
-// compute upcoming absolute times from a stored wall-clock definition.
-// calendar-field based (setDate/setHours), so DST transitions are resolved
-// with the offset valid on the target date; fixed-period repeats
-// (7 * 24 * 60 minutes) would otherwise drift by one hour
-const nextOccurrence = (time, days = [], from = Date.now()) => {
-  const base = new Date(from);
-  base.setSeconds(0);
-  const day = base.getDay();
-  const list = days.length ? [...days] : [day];
-  return list.map(a => (a - day)).map(n => {
-    const o = new Date(from);
-    o.setDate(base.getDate() + n);
-    o.setHours(Number(time.hours), Number(time.minutes), 0, 0);
-    while (o.getTime() <= from) {
-      o.setDate(o.getDate() + 7);
-    }
-    return o.getTime();
-  }).filter((t, i, l) => l.indexOf(t) === i).sort();
-};
-
-// rebuilds alarms-storage entries: weekly alarm slots are re-anchored to
+// rebuilds alarms-storage entries: recurring slots are re-anchored to
 // wall-clock times (fixed-period repeats drift across DST changes) and
 // expired entries are dropped. one-shot ("once") slots keep their exact
 // toggle-time epoch and simply expire when due - rebuilding them would
-// resurrect already-fired occurrences as endless weekly repeats
+// resurrect already-fired occurrences as endless repeats
 const normalizeStorage = (defs, storage, from = Date.now()) => {
   let changed = false;
   const ids = new Set(
@@ -143,19 +127,16 @@ const normalizeStorage = (defs, storage, from = Date.now()) => {
       .filter(id => defs.has(id))
   );
   for (const id of ids) {
-    const o = defs.get(id);
-    if (o.once) {
+    const def = schedule.normalize(defs.get(id));
+    if (def.repeat === 'once') {
       continue;
     }
-    const times = nextOccurrence(o.time, o.days || [], from);
+    const slots = schedule.slots(def, from);
     Object.keys(storage)
       .filter(n => n.startsWith(id + ':'))
       .forEach((n, index) => {
-        if (index < times.length) {
-          storage[n] = {
-            when: times[index],
-            periodInMinutes: 7 * 24 * 60
-          };
+        if (index < slots.length) {
+          storage[n] = {...slots[index]};
         }
         else {
           delete storage[n];
@@ -207,7 +188,8 @@ const alarms = {
         'repeats-alarm': 5, // number of times sound loops with "alarm" sound
         'volume-alarm': 0.8
       });
-      const o = prefs.alarms.filter(a => a.id === id).shift();
+      const raw = prefs.alarms.filter(a => a.id === id).shift();
+      const o = raw ? schedule.normalize(raw) : null;
       if (o?.snooze) {
         alarms.create('audio-' + id + '/1', {
           when: Date.now() + 5 * 60 * 1000
@@ -221,11 +203,8 @@ const alarms = {
       // wall-clock definition; once-alarms must stay one-shot (their
       // remaining slots are already scheduled and drift-free). stale slot
       // names beyond the new count get swept by the clear step
-      if (o && !o.once) {
-        nextOccurrence(o.time, o.days).forEach((when, index) => alarms.create(id + ':' + index, {
-          when,
-          periodInMinutes: 7 * 24 * 60
-        }));
+      if (o && o.repeat !== 'once') {
+        schedule.slots(o).forEach((info, index) => alarms.create(id + ':' + index, info));
       }
     }
     else if (name.startsWith('audio-')) {
@@ -432,13 +411,15 @@ chrome.idle.onStateChanged.addListener(state => {
       const defs = new Map(prefs.alarms.map(a => [a.id, a]));
       for (const o of os.filter(o => o.name !== BADGE_TICK)) {
         if (o.scheduledTime < now) {
-          const def = o.name.startsWith('alarm-') ? defs.get(o.name.split(':')[0]) : null;
+          const raw = o.name.startsWith('alarm-') ? defs.get(o.name.split(':')[0]) : null;
+          const def = raw ? schedule.normalize(raw) : null;
           let info;
-          if (def && !def.once) {
-            info = {
-              when: nextOccurrence(def.time, def.days || [], now)[0],
-              periodInMinutes: 7 * 24 * 60
-            };
+          if (def && def.repeat !== 'once') {
+            // each slot re-anchors to its own next occurrence from the
+            // wall-clock definition (weekly slots map by index; daily,
+            // monthly and yearly have a single rescheduled slot)
+            const slots = schedule.slots(def, now);
+            info = {...(slots[Number(o.name.split(':')[1])] || slots[0])};
           }
           else {
             // once-alarms ring immediately (once) and expire; timers keep

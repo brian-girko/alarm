@@ -45,18 +45,18 @@
         </template>
         <div data-id="entries" flex="1"></div>
       </div>
-      <div data-id="edit" vbox flex="1">
+      <div data-id="edit" vbox flex="1" data-repeat="once">
         <div hbox align="center" pack="center" class="bulky">
-          <table>
-            <tbody>
-              <tr>
-                <td align="center"><input data-id="hours" type="number" min="0" max="23" value="00"></td>
-                <td align="center"><input data-id="minutes" type="number" min="0" max="59" value="00"></td>
-              </tr>
-            </tbody>
-          </table>
+          <input data-id="clock" type="time" value="09:30" required>
         </div>
         <div data-id="current" class="small">Today</div>
+        <div data-id="repeat" hbox>
+          <label><input type="radio" name="repeat" value="once" checked><span>Once</span></label>
+          <label><input type="radio" name="repeat" value="daily"><span>Daily</span></label>
+          <label><input type="radio" name="repeat" value="weekly"><span>Weekly</span></label>
+          <label><input type="radio" name="repeat" value="monthly"><span>Monthly</span></label>
+          <label><input type="radio" name="repeat" value="yearly"><span>Yearly</span></label>
+        </div>
         <div data-id="days" hbox>
           <input type="checkbox" data-id="M" value="1" title="Monday">
           <input type="checkbox" data-id="Tu" value="2" title="Tuesday">
@@ -66,6 +66,18 @@
           <input type="checkbox" data-id="Sa" value="6" title="Saturday">
           <input type="checkbox" data-id="Su" value="0" title="Sunday">
         </div>
+        <div data-id="once-extra" vbox>
+          <div data-id="dates" hbox></div>
+          <input type="date" data-id="new-date" title="Add a date">
+        </div>
+        <div data-id="monthly-controls" vbox>
+          <h3>Day of month</h3>
+          <select data-id="month-day"></select>
+        </div>
+        <div data-id="yearly-controls" hbox>
+          <select data-id="yearly-month"></select>
+          <select data-id="yearly-day"></select>
+        </div>
         <div flex="1" vbox pack=center>
           <table>
             <tr>
@@ -74,13 +86,6 @@
                 <h3>5 minutes, 3 times</h3>
               </div></td>
               <td align="right"><input type="checkbox" class="switch" data-id="snooze"></td>
-            </tr>
-            <tr>
-              <td><div>
-                <span>Once</span>
-                <h3>Do not repeat</h3>
-              </div></td>
-              <td align="right"><input type="checkbox" class="switch" data-id="once"></td>
             </tr>
           </table>
         </div>
@@ -163,6 +168,7 @@
     <input type="radio" name="tab" id="timer">
     <label for="timer">Timer</label>
   </footer>
+  <script type="text/javascript" src="../schedule.js"></script>
   <script type="text/javascript" src="alarm.js"></script>
   <script type="text/javascript" src="stopwatch.js"></script>
   <script type="text/javascript" src="timer.js"></script>

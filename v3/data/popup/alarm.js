@@ -3,48 +3,44 @@
 const alarm = {};
 window.alarm = alarm;
 
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+];
+const DAYS = {
+  0: 'Sun',
+  1: 'Mon',
+  2: 'Tue',
+  3: 'Wed',
+  4: 'Thu',
+  5: 'Fri',
+  6: 'Sat'
+};
+const PILL = {
+  0: 'Su',
+  1: 'M',
+  2: 'Tu',
+  3: 'W',
+  4: 'Th',
+  5: 'F',
+  6: 'Sa'
+};
+
+const ordinal = n => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
 alarm.format = (d, time = false) => {
-  const day = ({
-    0: 'Sun',
-    1: 'Mon',
-    2: 'Tue',
-    3: 'Wed',
-    4: 'Thu',
-    5: 'Fri',
-    6: 'Sat'
-  })[d.getDay()] + ', ' + ('0' + d.getDate()).substr(-2) + ' ' + ({
-    0: 'Jan',
-    1: 'Feb',
-    2: 'Mar',
-    3: 'Apr',
-    4: 'May',
-    5: 'Jun',
-    6: 'Jul',
-    7: 'Aug',
-    8: 'Sep',
-    9: 'Oct',
-    10: 'Nov',
-    11: 'Dec'
-  })[d.getMonth()];
+  const day = DAYS[d.getDay()] + ', ' + ('0' + d.getDate()).substr(-2) + ' ' + MONTHS[d.getMonth()];
 
   return day + (time ? ' ' + ('0' + d.getHours()).substr(-2) + ':' + ('0' + d.getMinutes()).substr(-2) : '');
 };
 
-// helper function to check all days or uncheck all days based on once button
-document.querySelector('.alarm [data-id="edit"] [data-id="once"]').onclick = e => {
-  const days = [...document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]:checked')];
-  if (e.target.checked === false && days.length === 0) {
-    for (const e of document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]')) {
-      e.checked = true;
-    }
-  }
-  if (e.target.checked) {
-    for (const e of document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]')) {
-      e.checked = false;
-    }
-  }
-};
-
+// enable/disable an entry: clear all its slots, then register the upcoming
+// ones computed from the wall-clock definition (repeating single-slot modes
+// get rescheduled on fire; once slots simply expire)
 document.querySelector('.alarm div[data-id="content"]').addEventListener('change', ({target}) => {
   const entry = target.closest('.entry');
   if (entry) {
@@ -61,20 +57,9 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('change
       }));
       // set new alarms
       if (target.checked) {
-        let periodInMinutes = undefined;
-        if (entry.querySelector('[data-id=once]').textContent === '') {
-          periodInMinutes = entry.querySelector('[data-id=date]').classList.contains('range') ? 7 * 24 * 60 : undefined;
-        }
-
-        // recompute at toggle time; entry.times may be stale (popup open
-        // across a DST change) and would reschedule drifted epochs
-        const times = entry.times = alarm.convert(entry.o.time, entry.o.days);
-        times.forEach((when, index) => jobs.push({
+        schedule.slots(entry.o).forEach((info, index) => jobs.push({
           method: 'set-alarm',
-          info: {
-            when,
-            periodInMinutes
-          },
+          info,
           name: entry.dataset.id + ':' + index
         }));
       }
@@ -86,81 +71,79 @@ document.querySelector('.alarm div[data-id="content"]').addEventListener('change
   }
 });
 
-alarm.convert = (time, ds) => {
-  const d = new Date(); // 0 - 6 Sunday is 0, Monday is 1, and so on.
-
-  d.setSeconds(0);
-  const day = d.getDay();
-  const days = [...ds]; // clone
-  if (days.length === 0) {
-    days.push(d.getDay());
-  }
-
-  return days.map(a => (a - day)).map(n => {
-    const o = new Date();
-    // setHours already resolves the wall-clock time with the UTC offset that
-    // is valid on the target date, so DST transitions are handled natively
-    o.setDate(d.getDate() + n);
-    o.setHours(time.hours, time.minutes, 0);
-
-    if (o.getTime() - Date.now() < 0) {
-      o.setDate(o.getDate() + 7);
-    }
-
-    return o.getTime();
-  }).filter((n, i, l) => l.indexOf(n) === i).sort();
-};
-
-alarm.update = (entry, o, alarms) => {
-  const {id, time, name, days} = o;
+alarm.update = (entry, raw, alarms) => {
+  const o = entry.o = schedule.normalize(raw);
+  const {id, time, name} = o;
   // time
   entry.querySelector('[data-id="time"]').textContent =
     ('0' + time.hours).substr(-2) + ':' +
     ('0' + time.minutes).substr(-2);
-  // next occurance
-  const times = entry.times = alarm.convert(time, days);
+  // upcoming occurrence(s)
+  const slots = schedule.slots(o);
   const date = entry.querySelector('[data-id="date"]');
   const active = alarms.some(a => a.name.startsWith(id));
-  if (days.length) {
-    const map = {
-      0: 'Su',
-      1: 'M',
-      2: 'Tu',
-      3: 'W',
-      4: 'Th',
-      5: 'F',
-      6: 'Sa'
-    };
-    // while a once-alarm is enabled, its fired one-shot slots vanish
-    // from chrome.alarms - strike those weekdays. an OFF alarm has no
-    // slots either (cleared, not fired), so it renders without strikes
-    const pending = new Set(
-      alarms.filter(a => a.name.startsWith(id))
-        .map(a => new Date(a.scheduledTime).getDay())
-    );
-    date.textContent = '';
-    for (const d of days) {
-      const span = document.createElement('span');
-      span.textContent = map[d];
-      if (o.once && active && !pending.has(Number(d))) {
-        span.classList.add('fired');
-      }
-      date.appendChild(span);
+  // scheduled epochs of this alarm's live slots; a fired one-shot ("once")
+  // slot vanishes from chrome.alarms - render that weekday/date struck
+  // through. an OFF alarm has no slots either (cleared, not fired), so it
+  // renders without strikes
+  const times = new Set(
+    alarms.filter(a => a.name.startsWith(id))
+      .map(a => a.scheduledTime)
+  );
+  const pending = new Set(
+    [...times].map(t => new Date(t).getDay())
+  );
+  date.textContent = '';
+  date.classList.remove('range');
+
+  const span = (text, fired = false) => {
+    const span = document.createElement('span');
+    span.textContent = text;
+    if (fired) {
+      span.classList.add('fired');
     }
+    date.appendChild(span);
+  };
+
+  if (o.repeat === 'weekly') {
     date.classList.add('range');
+    for (const d of (o.days || [])) {
+      span(PILL[Number(d)]);
+    }
+  }
+  else if (o.repeat === 'once' && ((o.dates?.length ?? 0) + (o.days?.length ?? 0) > 0)) {
+    date.classList.add('range');
+    for (const {y, m, d} of (o.dates || [])) {
+      const when = schedule.resolve(Number(y), Number(m), Number(d), time);
+      span(d + ' ' + MONTHS[Number(m) - 1], active && times.has(when) === false);
+    }
+    for (const d of (o.days || [])) {
+      span(PILL[Number(d)], active && pending.has(Number(d)) === false);
+    }
+  }
+  else if (o.repeat === 'daily') {
+    date.classList.add('range');
+    span('Every day');
+  }
+  else if (o.repeat === 'monthly') {
+    date.classList.add('range');
+    span(o.day === 'last' ? 'Last day' : ordinal(Number(o.day)));
+  }
+  else if (o.repeat === 'yearly' && o.date) {
+    date.classList.add('range');
+    span(Number(o.date.d) + ' ' + MONTHS[Number(o.date.m) - 1]);
   }
   else {
-    date.classList.remove('range');
-    date.textContent = alarm.format(new Date(times[0]));
+    // no explicit schedule info; show the next computed occurrence
+    date.textContent = slots.length ? alarm.format(new Date(slots[0].when)) : '';
   }
 
-  entry.o = o;
   entry.dataset.id = id;
   entry.setAttribute('disabled', active === false);
   entry.querySelector('input[type="checkbox"]').checked = active;
   entry.title = entry.querySelector('[data-id="description"]').textContent = name || '';
 
-  entry.querySelector('[data-id="once"]').textContent = o.once ? 'once' : '';
+  entry.querySelector('[data-id="once"]').textContent = o.repeat === 'once' ? 'once' : '';
 };
 
 const init = (callback = () => {}) => chrome.runtime.sendMessage({
@@ -262,84 +245,203 @@ alarm.toast = () => {
 
 /* edit */
 {
-  const hours = document.querySelector('.alarm [data-id="edit"] [data-id="hours"]');
-  const minutes = document.querySelector('.alarm [data-id="edit"] [data-id="minutes"]');
-
   const edit = document.querySelector('.alarm [data-id="edit"]');
+  const clock = edit.querySelector('[data-id="clock"]');
+  const snooze = edit.querySelector('[data-id="snooze"]');
+  const name = edit.querySelector('[data-id="name"]');
+  const datesBox = edit.querySelector('[data-id="dates"]');
+  const newDate = edit.querySelector('[data-id="new-date"]');
+  const monthDay = edit.querySelector('[data-id="month-day"]');
+  const yearMonth = edit.querySelector('[data-id="yearly-month"]');
+  const yearDay = edit.querySelector('[data-id="yearly-day"]');
+  const pills = [...edit.querySelectorAll('[data-id="days"] input[type=checkbox]')];
+  const radios = [...edit.querySelectorAll('[data-id="repeat"] input[type=radio]')];
+
+  // working state of the once-mode date chips
+  const draft = {
+    dates: []
+  };
+
+  // monthly select: days 1-31 plus the "last day of the month" entry
+  for (let day = 1; day <= 31; day += 1) {
+    const option = document.createElement('option');
+    option.value = option.textContent = day;
+    monthDay.append(option);
+  }
+  {
+    const option = document.createElement('option');
+    option.value = 'last';
+    option.textContent = 'Last day';
+    monthDay.append(option);
+  }
+  // yearly repeats keep the raw month-day anchor (e.g. Feb 29); shorter
+  // months and non-leap years clamp at scheduling time, not here
+  MONTHS.forEach((month, index) => {
+    const option = document.createElement('option');
+    option.value = index + 1;
+    option.textContent = month;
+    yearMonth.append(option);
+  });
+  for (let day = 1; day <= 31; day += 1) {
+    const option = document.createElement('option');
+    option.value = option.textContent = day;
+    yearDay.append(option);
+  }
+
+  const todayISO = () => {
+    const d = new Date();
+    return schedule.toISO(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  };
+
+  const setMode = repeat => {
+    edit.dataset.repeat = repeat;
+    const radio = radios.find(r => r.value === repeat);
+    if (radio) {
+      radio.checked = true;
+    }
+  };
+
+  const renderDates = () => {
+    datesBox.textContent = '';
+    draft.dates.forEach(({y, m, d}, index) => {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const label = document.createElement('span');
+      label.textContent = d + ' ' + MONTHS[m - 1];
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.dataset.command = 'remove-date';
+      remove.dataset.index = index;
+      chip.append(label, remove);
+      datesBox.append(chip);
+    });
+  };
+
+  const readDraft = () => {
+    const [hours, minutes] = (clock.value || '00:00').split(':').map(Number);
+    const repeat = edit.dataset.repeat;
+    const o = {
+      time: {
+        hours: Number.isFinite(hours) ? hours : 0,
+        minutes: Number.isFinite(minutes) ? minutes : 0
+      },
+      repeat,
+      snooze: snooze.checked,
+      name: name.value
+    };
+    if (repeat === 'weekly' || repeat === 'once') {
+      o.days = pills.filter(e => e.checked).map(e => Number(e.value));
+    }
+    if (repeat === 'once') {
+      o.dates = draft.dates.slice();
+    }
+    if (repeat === 'monthly') {
+      o.day = monthDay.value === 'last' ? 'last' : Number(monthDay.value);
+    }
+    if (repeat === 'yearly') {
+      o.date = {
+        m: Number(yearMonth.value),
+        d: Number(yearDay.value)
+      };
+    }
+    return o;
+  };
+
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
   const onchange = () => {
-    // updating toast
+    const o = readDraft();
     const current = document.querySelector('.alarm [data-id=current]');
-    const days = [...document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]')]
-      .filter(e => e.checked);
-    if (days.length === 7) {
+    const days = o.days || [];
+    if (o.repeat === 'daily') {
       current.textContent = 'Every day';
     }
-    else if (days.length > 1) {
-      const map = {
-        0: 'Sun',
-        1: 'Mon',
-        2: 'Tue',
-        3: 'Wed',
-        4: 'Thu',
-        5: 'Fri',
-        6: 'Sat'
-      };
-      current.textContent = days.map(e => map[e.value]).join(', ');
+    else if (o.repeat === 'weekly') {
+      // an incomplete day selection stays in the mode and is guided here;
+      // save() blocks it with native feedback instead of switching modes
+      current.textContent = days.length === 0 ? 'Every week - select a day' :
+        (days.length === 7 ? 'Every day' : 'Every week - ' + days.map(d => DAYS[Number(d)]).join(', '));
+    }
+    else if (o.repeat === 'monthly') {
+      current.textContent = 'Monthly - ' + (o.day === 'last' ? 'the last day of the month' : ordinal(o.day));
+    }
+    else if (o.repeat === 'yearly') {
+      current.textContent = 'Yearly - ' + o.date.d + ' ' + MONTHS[o.date.m - 1];
     }
     else {
-      const times = alarm.convert({
-        hours: Number(hours.value),
-        minutes: Number(minutes.value)
-      }, days.map(e => e.value));
-
-      const time = times.shift();
-      const n = new Date();
-      const d = new Date(time);
-      const t = new Date(n.getTime() + 24 * 60 * 60 * 1000);
-
-      if (d.getDate() === n.getDate()) {
-        current.textContent = 'Today - ' + alarm.format(d);
-      }
-      else if (d.getDate() === t.getDate()) {
-        current.textContent = 'Tomorrow - ' + alarm.format(d);
+      const when = schedule.next(o);
+      if (when) {
+        const d = new Date(when);
+        const n = new Date();
+        const t = new Date(n.getTime() + 24 * 60 * 60 * 1000);
+        current.textContent = (sameDay(d, n) ? 'Today - ' : sameDay(d, t) ? 'Tomorrow - ' : 'Once - ') + alarm.format(d);
       }
       else {
-        current.textContent = alarm.format(d);
+        current.textContent = 'Once';
       }
     }
-    if (days.length === 0) {
-      document.querySelector('.alarm [data-id="edit"] [data-id="once"]').checked = true;
-    }
   };
-  edit.addEventListener('change', onchange);
+
+  radios.forEach(radio => radio.addEventListener('change', () => {
+    setMode(radio.value);
+    onchange();
+  }));
+  // clear the day-selection error as soon as any pill changes
+  pills.forEach(pill => pill.addEventListener('change', () => pills[0].setCustomValidity('')));
+  edit.addEventListener('change', ({target}) => {
+    if (target.type !== 'radio') {
+      onchange();
+    }
+  });
   edit.addEventListener('input', onchange);
 
-  // add leading zeros and force range
-  const fix = (e, min = 0, max = 23) => {
-    e.target.value = Math.max(min, Math.min(max, e.target.valueAsNumber)).toString().padStart(2, '0');
+  // picking a date adds it as a chip; only future dates can be scheduled
+  newDate.addEventListener('change', () => {
+    const parsed = schedule.parseISO(newDate.value);
+    if (parsed &&
+        schedule.resolve(parsed.y, parsed.m, parsed.d, {hours: 23, minutes: 59}) >= Date.now() &&
+        draft.dates.some(o => o.y === parsed.y && o.m === parsed.m && o.d === parsed.d) === false) {
+      draft.dates.push(parsed);
+      draft.dates.sort((a, b) => (a.y * 10000 + a.m * 100 + a.d) - (b.y * 10000 + b.m * 100 + b.d));
+      renderDates();
+    }
+    newDate.value = '';
+    onchange();
+  });
+
+  alarm['remove-date'] = target => {
+    const index = Number(target.dataset.index);
+    if (draft.dates[index]) {
+      draft.dates.splice(index, 1);
+      renderDates();
+      onchange();
+    }
   };
-  hours.addEventListener('change', e => fix(e, 0, 23));
-  minutes.addEventListener('change', e => fix(e, 0, 59));
 
   alarm.save = () => chrome.storage.local.get({
     alarms: []
   }, prefs => {
-    const id = document.querySelector('.alarm [data-id="edit"]').dataset.assign;
-    const restart = document.querySelector('.alarm [data-id="edit"]').dataset.restart === 'true';
-    const ids = prefs.alarms.map(a => a.id);
+    const id = edit.dataset.assign;
+    const restart = edit.dataset.restart === 'true';
+    if (clock.value === '') {
+      clock.reportValidity();
+      return;
+    }
+    const o = readDraft();
+    if (o.repeat === 'weekly' && (o.days?.length ?? 0) === 0) {
+      // a weekly alarm needs at least one weekday; native feedback is
+      // anchored at the day pills
+      pills[0].setCustomValidity('Select at least one day');
+      pills[0].reportValidity();
+      return;
+    }
     const a = {
       id,
-      days: [...document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]')]
-        .filter(e => e.checked).map(e => Number(e.value)),
-      time: {
-        hours: Math.min(23, Math.max(0, Number(hours.value))),
-        minutes: Math.min(59, Math.max(0, Number(minutes.value)))
-      },
-      snooze: document.querySelector('.alarm [data-id="edit"] [data-id="snooze"]').checked,
-      once: document.querySelector('.alarm [data-id="edit"] [data-id="once"]').checked,
-      name: document.querySelector('.alarm [data-id="edit"] [data-id="name"]').value
+      ...o
     };
 
+    const ids = prefs.alarms.map(a => a.id);
     const index = ids.indexOf(id);
     if (index === -1) {
       prefs.alarms.push(a);
@@ -361,8 +463,10 @@ alarm.toast = () => {
       document.body.dataset.alarm = 'view';
     });
   });
+
   alarm.edit = (o = {
     days: [],
+    dates: [],
     time: (() => {
       const d = new Date(Date.now() + 30 * 60 * 1000);
       return {
@@ -371,26 +475,32 @@ alarm.toast = () => {
       };
     })(),
     snooze: false,
-    once: true,
+    repeat: 'once',
     id: 'alarm-' + Math.random(),
     name: ''
   }, restart = false) => {
-    [...document.querySelectorAll('.alarm [data-id="edit"] [data-id="days"] input[type=checkbox]')].forEach(e => {
-      e.checked = o.days.indexOf(Number(e.value)) !== -1;
+    o = schedule.normalize(o);
+    draft.dates = (o.dates || []).map(({y, m, d}) => ({y, m, d}));
+    setMode(o.repeat);
+    clock.value = ('0' + o.time.hours).substr(-2) + ':' + ('0' + o.time.minutes).substr(-2);
+    pills.forEach(e => {
+      e.checked = (o.days || []).indexOf(Number(e.value)) !== -1;
     });
-    hours.value = ('0' + o.time.hours).substr(-2);
-    minutes.value = ('0' + o.time.minutes).substr(-2);
-    document.querySelector('.alarm [data-id="edit"] [data-id="snooze"]').checked = o.snooze;
-    document.querySelector('.alarm [data-id="edit"] [data-id="once"]').checked = o.once;
-    document.querySelector('.alarm [data-id="edit"]').dataset.assign = o.id;
-    document.querySelector('.alarm [data-id="edit"]').dataset.restart = restart;
-    document.querySelector('.alarm [data-id="edit"] [data-id="name"]').value = o.name || '';
+    snooze.checked = o.snooze;
+    monthDay.value = o.day === 'last' ? 'last' : String(o.day ?? new Date().getDate());
+    yearMonth.value = String(o.date?.m ?? new Date().getMonth() + 1);
+    yearDay.value = String(o.date?.d ?? new Date().getDate());
+    newDate.min = todayISO();
+    newDate.value = '';
+    renderDates();
+    name.value = o.name || '';
+
+    edit.dataset.assign = o.id;
+    edit.dataset.restart = restart;
 
     document.body.dataset.alarm = 'edit';
 
-    hours.dispatchEvent(new Event('change', {
-      bubbles: true
-    }));
+    onchange();
   };
 }
 

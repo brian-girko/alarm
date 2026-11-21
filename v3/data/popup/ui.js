@@ -56,6 +56,9 @@ document.addEventListener('click', e => {
     else if (command === 'remove') {
       alarm.remove(e.target);
     }
+    else if (command === 'remove-date') {
+      alarm['remove-date'](e.target);
+    }
     else if (command) {
       alarm[command]();
     }
