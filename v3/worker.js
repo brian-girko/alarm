@@ -113,13 +113,59 @@ const offscreen = {
   }
 };
 
+// silent "missed while the browser was closed" summary; opened once per
+// startup pass that found newly missed entries (the page lists every
+// undismissed record, not just the fresh ones)
+const missed = {
+  open() {
+    chrome.storage.local.get({
+      'notify-position': 'center' // center, br, tr
+    }, prefs => {
+      const args = new URLSearchParams();
+      args.set('position', prefs['notify-position']);
+      chrome.windows.create({
+        width: 420,
+        height: 400,
+        type: 'popup',
+        url: 'data/missed/index.html?' + args.toString()
+      });
+    });
+  }
+};
+
+// display label for an expired slot; null means "do not report" (stray
+// slot of a removed alarm definition, or an unrecognized name) - those
+// are dropped from the mirror exactly like before, just not listed
+const missedTitle = (defs, name) => {
+  if (name.startsWith('audio-')) {
+    const id = name.slice('audio-'.length).split('/')[0];
+    if (id.startsWith('timer-')) {
+      return 'Snoozed Timer';
+    }
+    const label = defs.has(id) ? schedule.normalize(defs.get(id)).name : '';
+    return label ? 'Snoozed Alarm: ' + label : 'Snoozed Alarm';
+  }
+  if (name.startsWith('timer-')) {
+    return 'Timer';
+  }
+  if (name.startsWith('alarm-')) {
+    const def = defs.get(name.split(':')[0]);
+    return def ? (schedule.normalize(def).name || 'Alarm') : null;
+  }
+  return null;
+};
+
 // rebuilds alarms-storage entries: recurring slots are re-anchored to
 // wall-clock times (fixed-period repeats drift across DST changes) and
 // expired entries are dropped. one-shot ("once") slots keep their exact
 // toggle-time epoch and simply expire when due - rebuilding them would
-// resurrect already-fired occurrences as endless repeats
-const normalizeStorage = (defs, storage, from = Date.now()) => {
+// resurrect already-fired occurrences as endless repeats. expired
+// non-periodic entries (once-slots, timers, snoozes) are appended to
+// "missed" so the user can review what came due while the browser was
+// closed instead of it vanishing silently
+const normalizeStorage = (defs, storage, missed = [], from = Date.now()) => {
   let changed = false;
+  let fresh = 0; // missed records appended by this pass
   const ids = new Set(
     Object.keys(storage)
       .filter(n => n.startsWith('alarm-'))
@@ -152,12 +198,25 @@ const normalizeStorage = (defs, storage, from = Date.now()) => {
         }
       }
       else {
+        const title = missedTitle(defs, name);
+        if (title && missed.some(m => m.name === name && m.when === info.when) === false) {
+          missed.push({
+            name,
+            title,
+            when: info.when, // epoch the slot was due
+            found: from // epoch this miss was detected
+          });
+          fresh += 1;
+        }
         delete storage[name];
       }
       changed = true;
     }
   }
-  return changed;
+  if (fresh) {
+    missed.sort((a, b) => a.when - b.when);
+  }
+  return {changed, fresh};
 };
 
 const alarms = {
@@ -319,10 +378,14 @@ const alarms = {
 
     const prefs = await chrome.storage.local.get({
       'alarms-storage': {},
-      'alarms': []
+      'alarms': [],
+      'missed-alarms': []
     });
+    // storage is an untrusted boundary (imported preferences): repair a
+    // corrupted list in place so the append below cannot throw
+    prefs['missed-alarms'] = Array.isArray(prefs['missed-alarms']) ? prefs['missed-alarms'] : [];
     const defs = new Map(prefs.alarms.map(a => [a.id, a]));
-    const modified = normalizeStorage(defs, prefs['alarms-storage']);
+    const {changed, fresh} = normalizeStorage(defs, prefs['alarms-storage'], prefs['missed-alarms']);
     for (const [name, info] of Object.entries(prefs['alarms-storage'])) {
       const o = await chrome.alarms.get(name);
       if (!o || (name.startsWith('alarm-') && o.scheduledTime !== info.when)) {
@@ -330,8 +393,12 @@ const alarms = {
         console.info('Force Creating a new Alarm', name, info);
       }
     }
-    if (modified) {
-      chrome.storage.local.set(prefs);
+    if (changed) {
+      // awaited so the missed window (opened below) reads the fresh list
+      await chrome.storage.local.set(prefs);
+    }
+    if (fresh) {
+      missed.open();
     }
     badge.update();
   };
