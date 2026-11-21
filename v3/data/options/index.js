@@ -93,20 +93,79 @@ document.getElementById('import').addEventListener('click', () => {
   document.body.appendChild(input);
   input.initialValue = input.value;
   input.onchange = readFile;
+  input.addEventListener('cancel', () => input.remove());
   input.click();
 
   function readFile() {
-    if (input.value !== input.initialValue) {
-      const file = input.files[0];
-      const reader = new FileReader();
-      reader.onloadend = event => {
-        input.remove();
-        const json = JSON.parse(event.target.result);
-        chrome.storage.local.clear(() => {
-          chrome.storage.local.set(json, () => chrome.runtime.reload());
-        });
-      };
-      reader.readAsText(file, 'utf-8');
+    if (input.value === input.initialValue) {
+      return;
     }
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onloadend = event => {
+      input.remove();
+      if (event.target.error) {
+        report('Import failed: could not read the file.');
+        return;
+      }
+      importPrefs(event.target.result);
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  // validate and sanitize before clearing anything, so a bad file is a no-op;
+  // unknown keys pass through untouched to keep the export a full backup
+  function importPrefs(text) {
+    let json;
+    try {
+      json = JSON.parse(text);
+    }
+    catch (e) {
+      report('Import failed: not a valid JSON file.');
+      return;
+    }
+    if (!json || typeof json !== 'object' || Array.isArray(json)) {
+      report('Import failed: the file does not contain a preferences object.');
+      return;
+    }
+    // dropped keys fall back to the defaults chrome.storage.local.get applies
+    const clean = Object.assign({}, json);
+    for (const key of ['volume-timer', 'volume-alarm', 'volume-misc']) {
+      if (key in clean) {
+        clean[key] = clamp01(clean[key]);
+      }
+    }
+    if (!['bp', 'pp'].includes(clean.mode)) {
+      delete clean.mode;
+    }
+    if (!['center', 'br', 'tr', 'random'].includes(clean['notify-position'])) {
+      delete clean['notify-position'];
+    }
+    for (const key of ['notify-on-top', 'badge-enabled']) {
+      if (typeof clean[key] !== 'boolean') {
+        delete clean[key];
+      }
+    }
+    if (!/^#[0-9a-f]{6}$/i.test(String(clean['badge-color']))) {
+      delete clean['badge-color'];
+    }
+    chrome.storage.local.clear(() => {
+      if (chrome.runtime.lastError) {
+        report('Import failed: ' + chrome.runtime.lastError.message);
+        return;
+      }
+      chrome.storage.local.set(clean, () => {
+        if (chrome.runtime.lastError) {
+          report('Import failed: ' + chrome.runtime.lastError.message);
+          return;
+        }
+        chrome.runtime.reload();
+      });
+    });
+  }
+
+  function report(message) {
+    toast.textContent = message;
+    window.setTimeout(() => toast.textContent = '', 2000);
   }
 });
