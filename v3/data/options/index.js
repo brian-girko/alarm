@@ -17,7 +17,7 @@ const load = () => chrome.storage.local.get({
   'volume-misc': 0.8,
   'mode': 'bp',
   'notify-position': 'center',
-  'notify-on-top': false,
+  'notify-on-top': true,
   'badge-enabled': true,
   'badge-color': '#1a73e8'
 }, prefs => {
@@ -34,6 +34,17 @@ const load = () => chrome.storage.local.get({
 load();
 document.getElementById('badge-enabled').addEventListener('change', e => {
   document.getElementById('badge-color').disabled = !e.target.checked;
+});
+// the notification window can rewrite 'notify-on-top' while this form is
+// open (its top-right checkbox); keep the form's checkbox in sync so a
+// later Save cannot silently revert that change. A removed key
+// (reset/import) falls back to the checked default, like load() does.
+chrome.storage.onChanged.addListener(ps => {
+  const change = ps['notify-on-top'];
+  if (change) {
+    document.getElementById('notify-on-top').checked =
+      change.newValue === undefined ? true : change.newValue;
+  }
 });
 
 document.getElementById('save').addEventListener('submit', e => {

@@ -166,6 +166,25 @@ window.onblur = () => setTimeout(() => chrome.runtime.sendMessage({
   method: 'bring-to-front'
 }, () => chrome.runtime.lastError), 100);
 
+// the checkbox mirrors the worker-side gate ('notify-on-top', shared with
+// the options page); it is checked by default so the window is kept on
+// top, and unchecking it persists for the upcoming notifications
+const onTop = document.getElementById('bring-to-front');
+chrome.storage.local.get({
+  'notify-on-top': true
+}, prefs => onTop.checked = prefs['notify-on-top']);
+onTop.onchange = e => chrome.storage.local.set({
+  'notify-on-top': e.target.checked
+});
+// follow the pref when the options page rewrites it while this window is
+// open; a removed key (reset/import) falls back to the checked default
+chrome.storage.onChanged.addListener(ps => {
+  const change = ps['notify-on-top'];
+  if (change) {
+    onTop.checked = change.newValue === undefined ? true : change.newValue;
+  }
+});
+
 // messaging
 chrome.runtime.onMessage.addListener((request, sender, resposne) => {
   // there is no user action so we need to keep snoozed

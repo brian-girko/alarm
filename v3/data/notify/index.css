@@ -96,3 +96,20 @@ p {
 #sound-alert:empty {
   visibility: hidden;
 }
+#head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+#on-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 10px;
+  font-size: 11px;
+  color: #767676;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+}

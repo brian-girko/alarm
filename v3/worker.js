@@ -745,8 +745,10 @@ const onMessage = (request, sender, respose) => {
     offscreen.stop();
   }
   else if (request.method === 'bring-to-front') {
+    // checked by default: the notify window's own checkbox and the options
+    // page share this pref, so unchecking it in either place persists
     chrome.storage.local.get({
-      'notify-on-top': false
+      'notify-on-top': true
     }, prefs => {
       if (prefs['notify-on-top']) {
         chrome.tabs.update(sender.tab.id, {
