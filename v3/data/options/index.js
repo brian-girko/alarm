@@ -158,6 +158,20 @@ document.getElementById('import').addEventListener('click', () => {
     if (!/^#[0-9a-f]{6}$/i.test(String(clean['badge-color']))) {
       delete clean['badge-color'];
     }
+    // the alarm definitions are repaired at read time (schedule.normalize
+    // in the popup and the worker), so the import only drops values that
+    // cannot carry a definition at all; a valid backup keeps importing
+    // byte-identical
+    if ('alarms' in clean) {
+      if (Array.isArray(clean.alarms)) {
+        clean.alarms = clean.alarms.filter(a =>
+          a !== null && typeof a === 'object' && Array.isArray(a) === false);
+      }
+      else {
+        // not an array: drop the key, the storage defaults apply on read
+        delete clean.alarms;
+      }
+    }
     chrome.storage.local.clear(() => {
       if (chrome.runtime.lastError) {
         report('Import failed: ' + chrome.runtime.lastError.message);

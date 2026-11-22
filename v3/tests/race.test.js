@@ -25,7 +25,10 @@
  * ('audio-<id>/N' is the only shape in use today; the slot-shaped
  * 'audio-<id>:<slot>/N' is defensive), and scenario 14 pins the
  * delimiters that keep a prefix-colliding id's snoozes ('alarm-0.8'
- * vs 'alarm-0.81') untouched. To see the pre-fix failures:
+ * vs 'alarm-0.81') untouched. Scenarios 15-16 guard the restore pass
+ * against the malformed 'alarms' arrays an import can write (non-object
+ * elements killed the defs map; a definition without a time killed
+ * normalizeStorage via schedule.slots). To see the pre-fix failures:
  *   cp worker.js /tmp/worker.old.js   # before applying the fix
  *   node tests/race.test.js /tmp/worker.old.js
  */
@@ -695,6 +698,64 @@ const scenarios = [
       ok(mirror['alarm-0.81:0'], "alarm-0.81's slot was dropped from the mirror");
       ok(mirror['audio-alarm-0.81/1'] && mirror['audio-alarm-0.81:0/2'],
         "alarm-0.81's snoozes were dropped from the mirror");
+    }
+  },
+  {
+    id: 15,
+    name: '15. an import with garbage alarm definitions still rebuilds the live set',
+    run: async workerPath => {
+      const {storage, alarms, chrome} = await loadWorker(workerPath);
+      const future = Date.now() + 3600000;
+      storage.seed({
+        // what a hand-edited backup can contain: non-object elements
+        // beside a good definition (the defs map used to throw on null.id)
+        'alarms': [
+          null,
+          {},
+          {id: 'alarm-new', name: 'coffee', repeat: 'daily', time: {hours: 7, minutes: 0}}
+        ],
+        'alarms-storage': {
+          'alarm-new:0': {when: Date.now() - 60000},
+          'timer-1': {when: future}
+        },
+        'missed-alarms': []
+      });
+      chrome.runtime.onMessage.fire({method: 'restore-alarms'}, {}, () => {});
+      await sleep(300); // the restore pass plus the debounced flush
+      await settle(storage);
+      await sleep(200);
+      await settle(storage);
+      ok(alarms.map.has('alarm-new:0'), 'the good definition was not rebuilt');
+      ok(alarms.map.get('alarm-new:0').scheduledTime > Date.now(),
+        'the past-due slot was not re-anchored');
+      ok(alarms.map.has('timer-1'), 'the timer did not survive the restore');
+      const mirror = storage.mirror();
+      ok(mirror['alarm-new:0'] && mirror['timer-1'], 'the mirror lost entries');
+    }
+  },
+  {
+    id: 16,
+    name: '16. a malformed definition with mirror slots repairs instead of killing the pass',
+    run: async workerPath => {
+      const {storage, alarms, chrome} = await loadWorker(workerPath);
+      storage.seed({
+        // no time at all: schedule.slots used to throw on the time deref
+        // inside normalizeStorage and the whole restore pass died with it
+        'alarms': [{id: 'alarm-bad'}],
+        'alarms-storage': {'alarm-bad:0': {when: Date.now() + 3600000}},
+        'missed-alarms': []
+      });
+      chrome.runtime.onMessage.fire({method: 'restore-alarms'}, {}, () => {});
+      await sleep(300);
+      await settle(storage);
+      await sleep(200);
+      await settle(storage);
+      ok(alarms.map.has('alarm-bad:0'), 'the restore pass died on the malformed definition');
+      ok(alarms.map.get('alarm-bad:0').scheduledTime > Date.now(),
+        'the slot was not re-anchored to the repaired definition');
+      const mirror = storage.mirror();
+      ok(mirror['alarm-bad:0'] && mirror['alarm-bad:0'].when > Date.now(),
+        'the mirror slot was not re-anchored');
     }
   }
 ];

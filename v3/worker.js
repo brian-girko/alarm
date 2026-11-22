@@ -192,7 +192,17 @@ const normalizeStorage = (defs, storage, missed = [], from = Date.now()) => {
       });
   }
   for (const [name, info] of Object.entries(storage)) {
-    if (info.when && info.when < from) {
+    // storage is an untrusted boundary (imported preferences): a mirror
+    // entry without a usable shape can neither be scheduled nor expire -
+    // drop it and let the restore flush rebuild the mirror from the
+    // survivors (a null here used to kill the whole pass)
+    if (info === null || typeof info !== 'object' ||
+      Number.isFinite(info.when) === false ||
+      (info.periodInMinutes !== undefined && Number.isFinite(info.periodInMinutes) === false)) {
+      delete storage[name];
+      changed = true;
+    }
+    else if (info.when < from) {
       if (info.periodInMinutes) {
         while (info.when < from) {
           info.when += info.periodInMinutes * 60 * 1000;
@@ -248,7 +258,9 @@ const alarms = {
         'repeats-alarm': 5, // number of times sound loops with "alarm" sound
         'volume-alarm': 0.8
       });
-      const raw = prefs.alarms.filter(a => a.id === id).shift();
+      // storage is an untrusted boundary (imported preferences)
+      const raw = (Array.isArray(prefs.alarms) ? prefs.alarms : [])
+        .filter(a => a?.id === id).shift();
       const o = raw ? schedule.normalize(raw) : null;
       if (o?.snooze) {
         alarms.create('audio-' + id + '/1', {
@@ -282,7 +294,8 @@ const alarms = {
       else if (id.startsWith('timer-')) {
         title = 'Timer Snoozed';
       }
-      const o = prefs.alarms.filter(a => a.id === id).shift();
+      const o = (Array.isArray(prefs.alarms) ? prefs.alarms : [])
+        .filter(a => a?.id === id).shift();
       set(id, title, prefs['src-misc'], prefs['repeats-misc'], prefs['volume-misc'], o?.name);
     }
   },
@@ -467,10 +480,14 @@ const alarms = {
     });
     // storage is an untrusted boundary (imported preferences): repair the
     // shapes in place so the passes below cannot throw
-    const defs = new Map((Array.isArray(prefs.alarms) ? prefs.alarms : []).map(a => [a.id, a]));
+    const defs = new Map((Array.isArray(prefs.alarms) ? prefs.alarms : []).map(a => [a?.id, a]));
     const storage = (prefs['alarms-storage'] && typeof prefs['alarms-storage'] === 'object' &&
       Array.isArray(prefs['alarms-storage']) === false) ? prefs['alarms-storage'] : {};
-    prefs['missed-alarms'] = Array.isArray(prefs['missed-alarms']) ? prefs['missed-alarms'] : [];
+    // storage is an untrusted boundary (imported preferences): records are
+    // objects the page can render; junk elements ride along only until the
+    // next missed append writes the cleaned list back
+    prefs['missed-alarms'] = (Array.isArray(prefs['missed-alarms']) ? prefs['missed-alarms'] : [])
+      .filter(m => m && typeof m === 'object');
     const {fresh} = normalizeStorage(defs, storage, prefs['missed-alarms']);
     const entries = Object.entries(storage);
 
@@ -501,7 +518,9 @@ const alarms = {
         const p = await chrome.storage.local.get({
           'missed-alarms': []
         });
-        const list = Array.isArray(p['missed-alarms']) ? p['missed-alarms'] : [];
+        // storage is an untrusted boundary (imported preferences)
+        const list = (Array.isArray(p['missed-alarms']) ? p['missed-alarms'] : [])
+          .filter(m => m && typeof m === 'object');
         const add = prefs['missed-alarms'].filter(m =>
           list.some(x => x.name === m.name && x.when === m.when) === false);
         if (add.length) {
@@ -643,7 +662,8 @@ chrome.idle.onStateChanged.addListener(state => {
       chrome.alarms.getAll(),
       chrome.storage.local.get({'alarms': []})
     ]).then(([os, prefs]) => {
-      const defs = new Map(prefs.alarms.map(a => [a.id, a]));
+      // storage is an untrusted boundary (imported preferences)
+      const defs = new Map((Array.isArray(prefs.alarms) ? prefs.alarms : []).map(a => [a?.id, a]));
       for (const o of os.filter(o => o.name !== BADGE_TICK)) {
         if (o.scheduledTime < now) {
           const raw = o.name.startsWith('alarm-') ? defs.get(o.name.split(':')[0]) : null;

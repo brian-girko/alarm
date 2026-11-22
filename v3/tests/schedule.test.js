@@ -19,6 +19,12 @@
  * (the market-open rule), skipped and ambiguous wall-clock times follow
  * the "compatible" rule, and unknown ids fall back to local anchoring.
  *
+ * Storage is an untrusted boundary (imported preferences), so the later
+ * scenarios pin the shape repair of schedule.normalize: a definition the
+ * import left malformed (no time, junk weekdays/anchors, not an object at
+ * all) repairs to its documented fallback instead of throwing on a deref
+ * or spinning a month/year walker forever.
+ *
  * Usage:
  *   node tests/schedule.test.js [data/schedule.js]
  */
@@ -222,6 +228,127 @@ const scenarios = [
       // Nov 22 2026 is past the US fall-back, so New York is on EST
       ok(schedule.offset(e, 'America/New_York') === -300, 'offset() misread New York (EST)');
       ok(schedule.offset(e, 'Asia/Kolkata') === 330, 'offset() misread the half-hour zone');
+    }
+  },
+  {
+    name: '17. a definition without a time repairs to a daily midnight alarm',
+    run: schedule => {
+      // alarms: [{}] in an imported file: the popup list derefs
+      // time.hours (sort and rendering), the worker derefs it in
+      // schedule.slots - none of that may throw
+      const n = schedule.normalize({});
+      ok(n.repeat === 'daily', '{} did not repair to a daily definition');
+      ok(n.time.hours === 0 && n.time.minutes === 0, '{} did not repair to 00:00');
+      const slots = schedule.slots({});
+      ok(slots.length === 1, 'the repaired default scheduled no slot');
+      ok(slots[0].when > NOW, 'the repaired default scheduled a past slot');
+    }
+  },
+  {
+    name: '18. non-object definitions repair to the default, nothing throws',
+    run: schedule => {
+      for (const garbage of [null, undefined, 'daily', 42, true, [1, 2]]) {
+        const n = schedule.normalize(garbage);
+        ok(n && typeof n === 'object' && Array.isArray(n) === false,
+          String(garbage) + ' did not normalize to a definition object');
+        ok(n.repeat === 'daily', String(garbage) + ' did not repair to daily');
+        ok(Number.isInteger(n.time.hours) && Number.isInteger(n.time.minutes),
+          String(garbage) + ' did not repair to a usable time');
+        ok(schedule.slots(garbage).length === 1, String(garbage) + ' scheduled no slot');
+      }
+    }
+  },
+  {
+    name: '19. a well-formed definition passes through untouched',
+    run: schedule => {
+      const def = {id: 'alarm-1', repeat: 'weekly', time: at(9, 0), days: [1, 3], name: 'x'};
+      ok(schedule.normalize(def) === def, 'a well-formed definition was copied');
+      ok(schedule.normalize(schedule.normalize(def)) === def, 'normalize is not idempotent');
+    }
+  },
+  {
+    name: '20. garbage fields repair to their documented fallbacks',
+    run: schedule => {
+      // time junk reads 00:00; numeric strings and out-of-range values
+      // clamp to the clock fields the rendering indexes with
+      let n = schedule.normalize({repeat: 'daily', time: '9:00'});
+      ok(n.time.hours === 0 && n.time.minutes === 0, 'a string time was not repaired');
+      n = schedule.normalize({repeat: 'daily', time: {hours: 30, minutes: 99}});
+      ok(n.time.hours === 23 && n.time.minutes === 59, 'out-of-range time was not clamped');
+      n = schedule.normalize({repeat: 'daily', time: {hours: '9', minutes: '30'}});
+      ok(n.time.hours === 9 && n.time.minutes === 30, 'numeric-string time was not repaired');
+      // junk weekdays drop out of days; a valid one keeps its slot
+      n = schedule.normalize({repeat: 'weekly', time: at(9, 0), days: ['x', 3, 9, -1]});
+      ok(JSON.stringify(n.days) === '[3]',
+        'days did not keep only valid weekdays: ' + JSON.stringify(n.days));
+      // junk date chips drop out of dates; an anchorable one survives
+      n = schedule.normalize({repeat: 'once', time: at(9, 0),
+        dates: [day(2026, 11, 23), 'x', 5, {}, {y: 2026, m: 13, d: 1}]});
+      ok(JSON.stringify(n.dates) === JSON.stringify([day(2026, 11, 23)]),
+        'dates did not keep only anchorable chips: ' + JSON.stringify(n.dates));
+      // a monthly anchor outside 1..31 reads the 1st (the junk value used
+      // to spin the month walker forever) and the slot resolves
+      n = schedule.normalize({repeat: 'monthly', time: at(9, 0), day: 'x'});
+      ok(n.day === 1, 'a junk monthly anchor was not repaired');
+      n = schedule.normalize({repeat: 'monthly', time: at(9, 0), day: 0});
+      ok(n.day === 1, 'a day-0 monthly anchor was not repaired to the 1st');
+      n = schedule.normalize({repeat: 'monthly', time: at(9, 0), day: '22'});
+      ok(n.day === '22', 'a numeric-string monthly anchor was rewritten');
+      ok(schedule.slots({repeat: 'monthly', time: at(9, 0), day: 'x'}, NOW)[0].when ===
+        epoch(2026, 12, 1, 9, 0), 'the repaired monthly anchor resolved to the wrong epoch');
+      // a yearly anchor reads Jan 1 (the junk value used to spin the year
+      // walker forever) and the slot resolves
+      n = schedule.normalize({repeat: 'yearly', time: at(9, 0), date: 'x'});
+      ok(n.date.m === 1 && n.date.d === 1, 'a junk yearly anchor was not repaired');
+      ok(schedule.slots({repeat: 'yearly', time: at(9, 0), date: 'x'}, NOW)[0].when ===
+        epoch(2027, 1, 1, 9, 0), 'the repaired yearly anchor resolved to the wrong epoch');
+    }
+  },
+  {
+    name: '21. a legacy definition is mapped and repaired in one pass',
+    run: schedule => {
+      const n = schedule.normalize({once: true, time: at(9, 0), dates: [day(2026, 11, 23)]});
+      ok(n.repeat === 'once', 'the legacy once flag was not mapped');
+      ok(n.once === undefined, 'the legacy once flag was not deleted');
+      const n2 = schedule.normalize({time: at(9, 0), days: [1]});
+      ok(n2.repeat === 'weekly', 'the legacy days mapping broke');
+      // a legacy definition without a time used to crash slots() with the
+      // same undefined deref
+      const n3 = schedule.normalize({once: true});
+      ok(n3.repeat === 'once' && n3.time.hours === 0 && n3.time.minutes === 0,
+        'a legacy definition without a time was not repaired');
+      ok(schedule.slots({once: true}, NOW).length === 1,
+        'the repaired legacy once-alarm scheduled no slot');
+    }
+  },
+  {
+    name: '22. every repeat mode schedules from junk fields without hanging',
+    run: schedule => {
+      // a junk monthly/yearly anchor never resolves ahead of "from", so
+      // the walkers used to spin forever; a repaired shape must terminate
+      const junk = {
+        once: {once: 'x', time: null, days: null, dates: null},
+        daily: {repeat: 'daily', time: {}, days: 'x'},
+        weekly: {repeat: 'weekly', time: 0, days: {}},
+        monthly: {repeat: 'monthly', time: [], day: null},
+        yearly: {repeat: 'yearly', time: NaN, date: []}
+      };
+      for (const [mode, def] of Object.entries(junk)) {
+        const slots = schedule.slots(def, NOW);
+        ok(slots.length === 1, mode + ' scheduled ' + slots.length + ' slots from junk');
+        ok(slots[0].when > NOW, mode + ' scheduled a past slot from junk');
+      }
+    }
+  },
+  {
+    name: '23. normalize never mutates the definition it repairs',
+    run: schedule => {
+      const def = {repeat: 'daily', time: 'junk', days: 'junk', extra: 'keep'};
+      const copy = JSON.parse(JSON.stringify(def));
+      const n = schedule.normalize(def);
+      ok(JSON.stringify(def) === JSON.stringify(copy), 'normalize mutated its input');
+      ok(n.extra === 'keep', 'normalize dropped unknown properties');
+      ok(n !== def, 'a repaired definition reused the input object');
     }
   }
 ];

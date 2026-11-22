@@ -32,6 +32,12 @@
  *           to their last day (day 31 -> Feb 28)
  *   yearly  on a fixed month-day (date: {m, d}); Feb 29 clamps to 28 in
  *           non-leap years
+ *
+ * normalize also repairs the deref-critical shapes of untrusted
+ * (imported) definitions: a definition that fails the usable contract is
+ * rebuilt with its documented fallback (00:00, dropped junk chips, 1st /
+ * Jan 1 anchors) instead of throwing on a missing time or spinning a
+ * month/year walker forever on an unanchorable one.
  */
 
 const schedule = {};
@@ -344,15 +350,98 @@ schedule.slots = (def, from = Date.now()) => {
 // first upcoming occurrence (epoch ms)
 schedule.next = (def, from = Date.now()) => schedule.slots(def, from)[0]?.when;
 
+// the shape contract a stored definition must satisfy to pass through
+// normalize untouched: consumers deref time.{hours,minutes} directly (the
+// popup's sort and list rendering, the worker's slot rebuilds) and the
+// resolvers walk days/dates/day/date. junk in those fields either throws
+// (a missing time) or spins a month/year walker forever (an unanchorable
+// anchor never resolves ahead of "from")
+const timeOK = t => t !== null && typeof t === 'object' && Array.isArray(t) === false &&
+  Number.isInteger(t.hours) && t.hours >= 0 && t.hours <= 23 &&
+  Number.isInteger(t.minutes) && t.minutes >= 0 && t.minutes <= 59;
+
+// a weekday slot: integer 0..6 after the Number() coercion the
+// definitions already rely on (PILL/DAYS are indexed with it)
+const weekdayOK = d => {
+  const n = Number(d);
+  return Number.isInteger(n) && n >= 0 && n <= 6;
+};
+
+// a once-mode date chip the resolvers can anchor: {y, m, d} with a finite
+// year, month 1..12 and day 1..31 (junk chips would render as
+// "undefined undefined" and resolve to NaN)
+const dateChipOK = d => {
+  if (d === null || typeof d !== 'object' || Array.isArray(d)) {
+    return false;
+  }
+  const m = Number(d.m);
+  const day = Number(d.d);
+  return Number.isFinite(Number(d.y)) && Number.isInteger(m) && m >= 1 && m <= 12 &&
+    Number.isInteger(day) && day >= 1 && day <= 31;
+};
+
+// a monthly anchor: 1..31 or the 'last' marker
+const monthDayOK = day => day === 'last' ||
+  (Number.isInteger(Number(day)) && Number(day) >= 1 && Number(day) <= 31);
+
+// a yearly anchor: {m: 1..12, d: 1..31}
+const yearDayOK = md => md !== null && typeof md === 'object' && Array.isArray(md) === false &&
+  Number.isInteger(Number(md.m)) && Number(md.m) >= 1 && Number(md.m) <= 12 &&
+  Number.isInteger(Number(md.d)) && Number(md.d) >= 1 && Number(md.d) <= 31;
+
+// absent fields are fine (the resolvers default them), present junk is not
+const daysOK = days => days === undefined || days === null ||
+  (Array.isArray(days) && days.every(weekdayOK));
+const datesOK = dates => dates === undefined || dates === null ||
+  (Array.isArray(dates) && dates.every(dateChipOK));
+const anchorOK = (v, ok) => v === undefined || v === null || ok(v);
+
+// true when the value is a definition every consumer can use as stored
+const usable = def => def !== null && typeof def === 'object' && Array.isArray(def) === false &&
+  Boolean(def.repeat) && timeOK(def.time) &&
+  daysOK(def.days) && datesOK(def.dates) &&
+  anchorOK(def.day, monthDayOK) && anchorOK(def.date, yearDayOK);
+
 // maps legacy {once, days} definitions onto the repeat model (pure):
 // once=true -> 'once' (days become one-shot weekday slots);
 // repeating with selected days -> 'weekly'; repeating without days -> 'daily'
+//
+// storage is an untrusted boundary (imported preferences): a definition
+// that fails the usable contract is rebuilt on a copy with guaranteed
+// shapes instead of crashing or hanging a consumer - the wall-clock time
+// clamps to 0..23:0..59 (garbage reads 00:00), junk weekday/date chips are
+// dropped, junk monthly/yearly anchors read the 1st / Jan 1. the repair
+// never invents an id (identity is the caller's business) and never
+// mutates its input; a well-formed definition keeps its exact reference.
 schedule.normalize = def => {
-  if (def.repeat) {
+  if (usable(def)) {
     return def;
   }
-  const o = {...def};
-  o.repeat = o.once ? 'once' : ((o.days?.length ?? 0) ? 'weekly' : 'daily');
+  const o = def !== null && typeof def === 'object' && Array.isArray(def) === false ? {...def} : {};
+  if (timeOK(o.time) === false) {
+    const int = v => {
+      const n = Math.floor(Number(v));
+      return Number.isFinite(n) ? n : 0;
+    };
+    o.time = {
+      hours: Math.min(23, Math.max(0, int(o.time?.hours))),
+      minutes: Math.min(59, Math.max(0, int(o.time?.minutes)))
+    };
+  }
+  if (daysOK(o.days) === false) {
+    o.days = Array.isArray(o.days) ? o.days.map(Number).filter(weekdayOK) : [];
+  }
+  if (datesOK(o.dates) === false) {
+    o.dates = Array.isArray(o.dates) ? o.dates.filter(dateChipOK) : [];
+  }
+  if (o.day !== undefined && o.day !== null && monthDayOK(o.day) === false) {
+    const n = Math.floor(Number(o.day));
+    o.day = Number.isInteger(n) ? Math.min(31, Math.max(1, n)) : 1;
+  }
+  if (o.date !== undefined && o.date !== null && yearDayOK(o.date) === false) {
+    o.date = {m: 1, d: 1};
+  }
+  o.repeat = o.repeat || (o.once ? 'once' : ((o.days?.length ?? 0) ? 'weekly' : 'daily'));
   delete o.once;
   return o;
 };

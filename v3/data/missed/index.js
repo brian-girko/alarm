@@ -38,14 +38,18 @@ const save = missed => chrome.storage.local.set({
 });
 
 const render = missed => {
+  // storage is an untrusted boundary (imported preferences): keep records
+  // a row can render (the img lookup derefs name)
+  const list = (Array.isArray(missed) ? missed : [])
+    .filter(o => o && typeof o.name === 'string');
   entries.textContent = '';
 
-  if (missed.length === 0) {
+  if (list.length === 0) {
     const p = document.createElement('p');
     p.textContent = 'Nothing was missed.';
     entries.append(p);
   }
-  for (const o of missed) {
+  for (const o of list) {
     const row = document.createElement('div');
     row.className = 'entry';
 
@@ -73,7 +77,7 @@ const render = missed => {
     row.append(img, text, remove);
     entries.append(row);
   }
-  clear.disabled = missed.length === 0;
+  clear.disabled = list.length === 0;
 };
 
 // per-entry dismissal; the storage.onChanged listener re-renders
@@ -83,7 +87,10 @@ entries.addEventListener('click', e => {
     chrome.storage.local.get({
       'missed-alarms': []
     }, prefs => {
-      save(prefs['missed-alarms'].filter(o => key(o) !== k));
+      // storage is an untrusted boundary (imported preferences); the
+      // write also drops records a row cannot render
+      save((Array.isArray(prefs['missed-alarms']) ? prefs['missed-alarms'] : [])
+        .filter(o => o && typeof o.name === 'string' && key(o) !== k));
     });
   }
 });

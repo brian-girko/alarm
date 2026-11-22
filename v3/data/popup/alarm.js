@@ -164,8 +164,10 @@ container.addEventListener('remove', ({target: entry}) => {
   chrome.storage.local.get({
     alarms: []
   }, prefs => {
+    // storage is an untrusted boundary (imported preferences)
     chrome.storage.local.set({
-      alarms: prefs.alarms.filter(a => a.id !== entry.dataset.id)
+      alarms: (Array.isArray(prefs.alarms) ? prefs.alarms : [])
+        .filter(a => a?.id !== entry.dataset.id)
     });
   });
 });
@@ -178,15 +180,23 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
   // on fire); entries use them to tell a rung date from a dropped one
   'fired-slots': []
 }, prefs => {
-  // storage is an untrusted boundary (imported preferences)
+  // storage is an untrusted boundary (imported preferences): the array
+  // guard keeps a malformed import from throwing on sort/map, and every
+  // definition is repaired (schedule.normalize) before the sort ever
+  // dereferences time. a definition without an id is not rendered: there
+  // is no id to toggle, edit or remove it by, so its entry could only
+  // become a trap
   const fired = Array.isArray(prefs['fired-slots']) ? prefs['fired-slots'] : [];
+  const defs = (Array.isArray(prefs.alarms) ? prefs.alarms : [])
+    .map(o => schedule.normalize(o))
+    .filter(o => o.id);
   const entries = document.querySelector('.alarm div[data-id="entries"]');
 
   // reuse existing entries keyed by alarm id to avoid rebuilding the
   // whole list (keeps scroll offset intact)
   const byId = new Map([...entries.querySelectorAll('alarm-entry')].map(e => [e.dataset.id, e]));
   const list = [];
-  for (const o of prefs.alarms.sort((a, b) => {
+  for (const o of defs.sort((a, b) => {
     return a.time.hours * 60 + a.time.minutes - (b.time.hours * 60 + b.time.minutes);
   })) {
     let entry = byId.get(o.id);
@@ -233,7 +243,7 @@ alarm.toast = () => {
     'alarms': []
   }, prefs => {
     // storage is an untrusted boundary (imported preferences)
-    const defs = new Map((Array.isArray(prefs.alarms) ? prefs.alarms : []).map(a => [a.id, a]));
+    const defs = new Map((Array.isArray(prefs.alarms) ? prefs.alarms : []).map(a => [a?.id, a]));
     // zone of the definition behind a slot name, when it has a usable one
     const zoneOf = id => {
       const zone = defs.get(id)?.zone;
@@ -561,16 +571,19 @@ alarm.toast = () => {
       ...o
     };
 
-    const ids = prefs.alarms.map(a => a.id);
+    // storage is an untrusted boundary (imported preferences); a non-array
+    // is replaced by the array this save writes
+    const defs = Array.isArray(prefs.alarms) ? prefs.alarms : [];
+    const ids = defs.map(a => a?.id);
     const index = ids.indexOf(id);
     if (index === -1) {
-      prefs.alarms.push(a);
+      defs.push(a);
     }
     else {
-      prefs.alarms[index] = a;
+      defs[index] = a;
     }
     chrome.storage.local.set({
-      alarms: prefs.alarms
+      alarms: defs
     }, () => {
       init(() => {
         if (restart) {
