@@ -2,10 +2,13 @@
 'use strict';
 
 const args = new URLSearchParams(location.search);
-document.documentElement.classList.add(args.get('mode'));
+const mode = args.get('mode');
+
+// the standalone window opens with ?mode=pp; the toolbar popup has no query
+document.documentElement.classList.add(mode ?? 'bp');
 
 // supports page zoom other than 100% on the popup mode
-if (args.get('mode') !== 'pp') {
+if (mode !== 'pp') {
   document.body.style.height = (window.visualViewport.height - 1) + 'px';
 }
 
