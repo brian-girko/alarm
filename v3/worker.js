@@ -365,8 +365,20 @@ const alarms = {
 
     // slot names are '<id>:<index>', so require the ':' delimiter to
     // avoid sweeping prefix-colliding ids ('alarm-0.8' vs 'alarm-0.81');
-    // colon-less names (timer-1, snoozes) must equal their key exactly
-    for (const a of as.filter(a => keys.some(key => a.name === key || a.name.startsWith(key + ':')))) {
+    // colon-less names (timer-1, snoozes) must equal their key exactly.
+    // a key's pending snoozes join the same sweep, so disabling or
+    // deleting an alarm (or resetting its timer) cannot leave a snooze
+    // ringing behind it. 'audio-<id>/N' is the only shape in use (both
+    // producers - the on-fire scheduling and the notification window's
+    // Snooze button - name snoozes with the bare id); the ':' snooze
+    // alternative is defensive. should naming ever switch to fired
+    // slots, the slot must also be stripped where the name is resolved
+    // back to a definition: fire()'s def lookup, missedTitle's
+    // defs.has and the popup toast's defs.get
+    for (const a of as.filter(a => keys.some(key => a.name === key ||
+      a.name.startsWith(key + ':') ||
+      a.name.startsWith('audio-' + key + '/') ||
+      a.name.startsWith('audio-' + key + ':')))) {
       cache.clear.add(a.name);
     }
 

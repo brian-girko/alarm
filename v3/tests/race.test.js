@@ -20,7 +20,12 @@
  * the popup reads to tell a rung once-date from one that never got
  * scheduled. Scenarios 9-12 guard the restore pass behind the
  * 'restore-alarms' message (import/reset) and the startup sweep of
- * live orphans. To see the pre-fix failures:
+ * live orphans. Scenarios 13-14 guard the snooze sweep on
+ * disable/delete: a key's pending snoozes join the flush's clear scan
+ * ('audio-<id>/N' is the only shape in use today; the slot-shaped
+ * 'audio-<id>:<slot>/N' is defensive), and scenario 14 pins the
+ * delimiters that keep a prefix-colliding id's snoozes ('alarm-0.8'
+ * vs 'alarm-0.81') untouched. To see the pre-fix failures:
  *   cp worker.js /tmp/worker.old.js   # before applying the fix
  *   node tests/race.test.js /tmp/worker.old.js
  */
@@ -601,6 +606,95 @@ const scenarios = [
       await settle(storage);
       ok(alarms.calls.filter(c => c === 'timer-9').length === built,
         'the guarded second pass re-ran the restore');
+    }
+  },
+  {
+    id: 13,
+    name: '13. disabling an alarm sweeps its pending snoozes',
+    run: async workerPath => {
+      const {storage, alarms, chrome} = await loadWorker(workerPath);
+      const future = Date.now() + 1800000;
+      storage.seed({
+        'alarms': [{id: 'alarm-x', name: 'coffee', repeat: 'once', time: {hours: 6, minutes: 0}, snooze: true}],
+        'alarms-storage': {
+          'alarm-x:0': {when: future},
+          // 'audio-<id>/N' is the only shape in use today: both
+          // producers name snoozes with the bare alarm id (the
+          // worker's on-fire scheduling, and the window's Snooze
+          // button composing from the notification's bare-id name)
+          'audio-alarm-x/1': {when: future},
+          'audio-alarm-x/2': {when: future},
+          // slot-shaped snoozes are unreachable today; seeded to pin
+          // the sweep's defensive ':' match
+          'audio-alarm-x:0/6': {when: future}
+        }
+      });
+      for (const [name, info] of Object.entries(storage.read('alarms-storage'))) {
+        alarms.create(name, info);
+      }
+      // the popup's disable/delete batch: clear the slots of this id
+      // (the snooze clears it sends land on the same cache; the sweep
+      // below is what catches snoozes its stale snapshot missed)
+      clearAlarm(chrome, 'alarm-x:0');
+      await sleep(300); // the debounced flush
+      await settle(storage);
+      await sleep(200);
+      await settle(storage);
+      ok(!alarms.map.has('alarm-x:0'), 'the alarm slot survived the disable');
+      ok(!alarms.map.has('audio-alarm-x/1') && !alarms.map.has('audio-alarm-x/2'),
+        'a pending snooze survived the disable');
+      ok(!alarms.map.has('audio-alarm-x:0/6'),
+        'a slot-shaped snooze survived the disable');
+      const mirror = storage.mirror();
+      ok(!mirror['audio-alarm-x/1'] && !mirror['audio-alarm-x/2'] && !mirror['audio-alarm-x:0/6'],
+        'a swept snooze survived in the mirror');
+    }
+  },
+  {
+    id: 14,
+    name: '14. a prefix-colliding id keeps its snoozes',
+    run: async workerPath => {
+      const {storage, alarms, chrome} = await loadWorker(workerPath);
+      const future = Date.now() + 1800000;
+      storage.seed({
+        'alarms': [
+          {id: 'alarm-0.8', name: 'first', repeat: 'once', time: {hours: 6, minutes: 0}},
+          {id: 'alarm-0.81', name: 'second', repeat: 'once', time: {hours: 7, minutes: 0}}
+        ],
+        'alarms-storage': {
+          'alarm-0.8:0': {when: future},
+          'alarm-0.81:0': {when: future},
+          // both snooze shapes for each id; the ':'-shaped ones are
+          // unreachable today (defensive coverage, see scenario 13)
+          'audio-alarm-0.8/1': {when: future},
+          'audio-alarm-0.8:0/3': {when: future},
+          'audio-alarm-0.81/1': {when: future},
+          'audio-alarm-0.81:0/2': {when: future}
+        }
+      });
+      for (const [name, info] of Object.entries(storage.read('alarms-storage'))) {
+        alarms.create(name, info);
+      }
+      // disabling 'alarm-0.8' must not sweep 'alarm-0.81's snoozes:
+      // a bare-prefix match ('audio-' + key, no delimiter after the
+      // id) would clear them too
+      clearAlarm(chrome, 'alarm-0.8:0');
+      await sleep(300);
+      await settle(storage);
+      await sleep(200);
+      await settle(storage);
+      ok(!alarms.map.has('alarm-0.8:0'), "alarm-0.8's slot survived the disable");
+      ok(!alarms.map.has('audio-alarm-0.8/1') && !alarms.map.has('audio-alarm-0.8:0/3'),
+        "alarm-0.8's own snoozes survived the disable");
+      ok(alarms.map.has('alarm-0.81:0'), "alarm-0.81's slot was swept by the colliding id");
+      ok(alarms.map.has('audio-alarm-0.81/1') && alarms.map.has('audio-alarm-0.81:0/2'),
+        "alarm-0.81's snoozes were swept by the colliding id");
+      const mirror = storage.mirror();
+      ok(!mirror['audio-alarm-0.8/1'] && !mirror['audio-alarm-0.8:0/3'],
+        "alarm-0.8's own snoozes survived in the mirror");
+      ok(mirror['alarm-0.81:0'], "alarm-0.81's slot was dropped from the mirror");
+      ok(mirror['audio-alarm-0.81/1'] && mirror['audio-alarm-0.81:0/2'],
+        "alarm-0.81's snoozes were dropped from the mirror");
     }
   }
 ];

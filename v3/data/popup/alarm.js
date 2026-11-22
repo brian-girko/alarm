@@ -110,8 +110,17 @@ const scheduleEntry = (entry, on) => chrome.runtime.sendMessage({
   const jobs = [];
   // remove old alarms
   // match the ':' slot delimiter so prefix-colliding ids
-  // ('alarm-0.8' vs 'alarm-0.81') cannot cross-clear each other
-  alarms.filter(a => a.name.startsWith(entry.dataset.id + ':')).forEach(a => jobs.push({
+  // ('alarm-0.8' vs 'alarm-0.81') cannot cross-clear each other;
+  // pending snoozes ('audio-<id>/N', the only shape in use - see the
+  // worker sweep for the naming details) clear with their owner, the
+  // delimiter after the id keeping the collisions equally safe (the
+  // ':' alternative there is defensive, mirrored here). a rung
+  // once-alarm has no live '<id>:' slot left, so without the snooze
+  // jobs this batch would be empty and the worker's sweep would never
+  // run
+  alarms.filter(a => a.name.startsWith(entry.dataset.id + ':') ||
+    a.name.startsWith('audio-' + entry.dataset.id + '/') ||
+    a.name.startsWith('audio-' + entry.dataset.id + ':')).forEach(a => jobs.push({
     method: 'clear-alarm',
     name: a.name
   }));
@@ -145,10 +154,12 @@ const container = document.querySelector('.alarm div[data-id="content"]');
 container.addEventListener('toggle', ({target: entry}) => scheduleEntry(entry, entry.active));
 container.addEventListener('edit', ({target: entry}) => alarm.edit(entry.o, entry.active));
 container.addEventListener('remove', ({target: entry}) => {
-  // clear the scheduled slots of an enabled alarm before dropping it
-  if (entry.active) {
-    scheduleEntry(entry, false);
-  }
+  // clear the scheduled slots and pending snoozes of the entry before
+  // dropping it, whether or not it currently renders active: a rung
+  // once-alarm has no live slot left (the browser dropped it on fire),
+  // yet its snooze keeps ringing - an empty clear batch is a no-op on
+  // the worker, so this is safe for entries with nothing scheduled
+  scheduleEntry(entry, false);
   entry.remove();
   chrome.storage.local.get({
     alarms: []
