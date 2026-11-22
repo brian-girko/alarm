@@ -222,11 +222,21 @@ class AlarmEntry extends HTMLElement {
       alarms.filter(a => a.name.startsWith(id + ':'))
         .map(a => a.scheduledTime)
     );
+    // the definition's zone when the runtime can anchor to it; an
+    // imported id it rejects anchors the alarm locally and stays
+    // untagged, matching what scheduling does
+    const zone = o.zone && schedule.zoneValid(o.zone) ? o.zone : '';
+    // the browser-local wall-clock of the next occurrence, shown in ()
+    // beside the zone so the list never forces timezone math; zone-less
+    // alarms and times that read the same locally show nothing
+    const local = zone && slots.length ? alarm.local(slots[0].when, zone) : '';
+    // weekday of a scheduled/rung epoch in the alarm's zone: the chips
+    // map on the zone's calendar, whose date can differ from the local one
     const pending = new Set(
-      [...times].map(t => new Date(t).getDay())
+      [...times].map(t => schedule.wall(t, zone).day)
     );
     const rangDays = new Set(
-      [...rang].map(t => new Date(t).getDay())
+      [...rang].map(t => schedule.wall(t, zone).day)
     );
 
     this.#date.textContent = '';
@@ -243,11 +253,25 @@ class AlarmEntry extends HTMLElement {
       this.#date.appendChild(span);
     };
 
+    // the definition's zone appended to the schedule line, with the
+    // local time of its next occurrence beside it (the tooltip carries
+    // the full id and the current offset)
+    const tagZone = () => {
+      if (zone === '') {
+        return;
+      }
+      const tag = document.createElement('span');
+      tag.textContent = alarm.zoneLabel(zone) + (local ? ' ' + local : '');
+      tag.title = zone + ' (' + alarm.zoneUTC(zone) + ')';
+      this.#date.append(tag);
+    };
+
     if (o.repeat === 'weekly') {
       this.#date.classList.add('range');
       for (const d of (o.days || [])) {
         span(PILL[Number(d)]);
       }
+      tagZone();
     }
     else if (o.repeat === 'once' && ((o.dates?.length ?? 0) + (o.days?.length ?? 0) > 0)) {
       this.#date.classList.add('range');
@@ -258,29 +282,43 @@ class AlarmEntry extends HTMLElement {
         (times.has(when) ? '' : (rang.has(when) ? 'fired' :
           (when <= Date.now() ? 'passed' : '')));
       for (const {y, m, d} of (o.dates || [])) {
-        const when = schedule.resolve(Number(y), Number(m), Number(d), time);
+        const when = schedule.resolve(Number(y), Number(m), Number(d), time, zone);
         span(d + ' ' + MONTHS[Number(m) - 1], state(when));
       }
       for (const d of (o.days || [])) {
         span(PILL[Number(d)], active === false ? '' :
           (pending.has(Number(d)) ? '' : (rangDays.has(Number(d)) ? 'fired' : 'passed')));
       }
+      tagZone();
     }
     else if (o.repeat === 'daily') {
       this.#date.classList.add('range');
       span('Every day');
+      tagZone();
     }
     else if (o.repeat === 'monthly') {
       this.#date.classList.add('range');
       span(o.day === 'last' ? 'Last day' : ordinal(Number(o.day)));
+      tagZone();
     }
     else if (o.repeat === 'yearly' && o.date) {
       this.#date.classList.add('range');
       span(Number(o.date.d) + ' ' + MONTHS[Number(o.date.m) - 1]);
+      tagZone();
     }
     else {
-      // no explicit schedule info; show the next computed occurrence
-      this.#date.textContent = slots.length ? alarm.format(new Date(slots[0].when)) : '';
+      // no explicit schedule info; show the next computed occurrence,
+      // rendered in the alarm's zone with the local time beside it
+      if (slots.length === 0) {
+        this.#date.textContent = '';
+      }
+      else if (zone) {
+        this.#date.textContent = alarm.format(new Date(slots[0].when), true, zone) +
+          ' ' + alarm.zoneLabel(zone) + (local ? ' ' + local : '');
+      }
+      else {
+        this.#date.textContent = alarm.format(new Date(slots[0].when));
+      }
     }
 
     this.dataset.id = id;

@@ -39,6 +39,13 @@
         <div hbox align="center" pack="center" class="bulky">
           <input data-id="clock" type="time" value="09:30" required>
         </div>
+        <details data-id="zone-box">
+          <summary>Timezone: <span data-id="zone-summary">Local time</span></summary>
+          <div data-id="zone-row" hbox align="center" pack="center">
+            <select data-id="zone" aria-label="Alarm timezone"></select>
+          </div>
+          <div data-id="zone-now" class="small"></div>
+        </details>
         <div data-id="current" class="small">Today</div>
         <div data-id="repeat" hbox>
           <label><input type="radio" name="repeat" value="once" checked><span>Once</span></label>

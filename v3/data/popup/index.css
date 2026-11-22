@@ -267,6 +267,36 @@ body[data-tab="timer"] #content {
 .alarm div[data-id="current"] {
   padding: 10px 0;
 }
+/* timezone picker of the edit form: collapsed by default, its summary
+   line is the only footprint until the alarm carries a zone */
+.alarm [data-id="zone-box"] {
+  margin-top: -25px;
+}
+.alarm [data-id="zone-box"] > summary {
+  padding: 2px 0;
+  font-size: var(--font-small);
+  color: var(--color-dark);
+  cursor: pointer;
+}
+.alarm [data-id="zone-box"] > summary [data-id="zone-summary"] {
+  color: var(--color);
+}
+/* the select reuses the shared edit-form select styling; just center it */
+.alarm div[data-id="zone-row"] {
+  padding-top: 5px;
+}
+.alarm details[data-id="zone-box"] select {
+  width: 240px;
+  flex: none;
+}
+/* live "Now: 09:32 in New York (UTC-5)" hint under the picker */
+.alarm div[data-id="zone-now"] {
+  padding-top: 5px;
+  text-align: center;
+}
+.alarm div[data-id="zone-now"]:empty {
+  display: none;
+}
 /* repeat mode; each mode reveals its own controls */
 .alarm div[data-id="edit"] :is([data-id="days"], [data-id="once-extra"], [data-id="monthly-controls"], [data-id="yearly-controls"]) {
   display: none;
