@@ -7,10 +7,10 @@ stopwatch.ms2time = duration => ({
   milliseconds: parseInt((duration % 1000) / 10),
   seconds: Math.floor((duration / 1000) % 60),
   minutes: Math.floor((duration / (1000 * 60)) % 60),
-  hours: Math.floor((duration / (1000 * 60 * 60)) % 24)
+  hours: Math.floor((duration / (1000 * 60 * 60))) // there is no limit to 24 hours
 });
 
-stopwatch.format = o => ('0' + o.hours).substr(-2) + ':' +
+stopwatch.format = o => String(o.hours).padStart(2, '0') + ':' +
   ('0' + o.minutes).substr(-2) + ':' +
   ('0' + o.seconds).substr(-2) + '.' +
   ('0' + o.milliseconds).substr(-2);
@@ -37,7 +37,7 @@ stopwatch.lap = (d = Date.now() - stopwatch.when, record = true) => {
   }
   const tr = document.createElement('tr');
   const one = document.createElement('td');
-  one.textContent = ('0' + stopwatch.laps.length).substr(-2);
+  one.textContent = String(stopwatch.laps.length).padStart(2, '0');
   tr.appendChild(one);
   const two = document.createElement('td');
   const o = stopwatch.ms2time(d);
