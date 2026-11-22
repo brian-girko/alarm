@@ -18,7 +18,9 @@
  * common snooze path and passes on both. Scenario 8 guards the
  * fired-slots log (added with the once-alarm "passed" surfacing) that
  * the popup reads to tell a rung once-date from one that never got
- * scheduled. To see the pre-fix failures:
+ * scheduled. Scenarios 9-12 guard the restore pass behind the
+ * 'restore-alarms' message (import/reset) and the startup sweep of
+ * live orphans. To see the pre-fix failures:
  *   cp worker.js /tmp/worker.old.js   # before applying the fix
  *   node tests/race.test.js /tmp/worker.old.js
  */
@@ -490,6 +492,115 @@ const scenarios = [
       ok(log.length === 1, 'the fired slot was not recorded in the log');
       ok(log[0].id === 'alarm-x', 'the log entry has the wrong alarm id');
       ok(log[0].when === when, 'the log entry has the wrong epoch');
+    }
+  },
+  {
+    id: 9,
+    name: '9. an import rebuilds the live set from the imported mirror',
+    run: async workerPath => {
+      const {storage, alarms, chrome} = await loadWorker(workerPath);
+      const future = Date.now() + 3600000;
+      // pre-import leftovers (a packed install keeps them across a reload)
+      alarms.create('alarm-old:0', {when: future});
+      alarms.create('timer-1', {when: future});
+      alarms.create('audio-alarm-old/1', {when: future});
+      // preferences written by the options page: a daily alarm whose
+      // mirror slot is past due
+      storage.seed({
+        'alarms': [{id: 'alarm-new', name: 'coffee', repeat: 'daily', time: {hours: 7, minutes: 0}}],
+        'alarms-storage': {'alarm-new:0': {when: Date.now() - 60000}},
+        'missed-alarms': []
+      });
+      chrome.runtime.onMessage.fire({method: 'restore-alarms'}, {}, () => {});
+      await sleep(300); // the restore pass plus the debounced flush
+      await settle(storage);
+      await sleep(200);
+      await settle(storage);
+      ok(alarms.map.has('alarm-new:0'), 'the imported slot was not rebuilt');
+      ok(alarms.map.get('alarm-new:0').scheduledTime > Date.now(),
+        'the past-due imported slot was rebuilt past-due instead of re-anchoring');
+      ok(!alarms.map.has('alarm-old:0'), 'a pre-import alarm slot survived the import');
+      ok(!alarms.map.has('timer-1'), 'the pre-import timer survived the import');
+      ok(!alarms.map.has('audio-alarm-old/1'), 'a pre-import snooze survived the import');
+      const mirror = storage.mirror();
+      ok(mirror['alarm-new:0'], 'the imported entry was dropped from the mirror');
+      ok(Object.keys(mirror).length === 1, 'the mirror is not exactly the imported survivors');
+      ok((storage.read('missed-alarms') || []).length === 0,
+        'a re-anchored recurring slot was reported as missed');
+    }
+  },
+  {
+    id: 10,
+    name: '10. an import drops an expired once-slot and reports it as missed',
+    run: async workerPath => {
+      const {storage, alarms, chrome} = await loadWorker(workerPath);
+      const past = Date.now() - 60000;
+      storage.seed({
+        'alarms': [{id: 'alarm-x', name: 'coffee', repeat: 'once', time: {hours: 6, minutes: 0}}],
+        'alarms-storage': {'alarm-x:0': {when: past}}
+      });
+      chrome.runtime.onMessage.fire({method: 'restore-alarms'}, {}, () => {});
+      await sleep(300); // the flush plus the missed append writer
+      await settle(storage);
+      ok(!alarms.map.has('alarm-x:0'), 'the expired once-slot was rebuilt and would ring');
+      const mirror = storage.mirror();
+      ok(!mirror['alarm-x:0'], 'the expired once-slot stayed in the mirror');
+      const missed = storage.read('missed-alarms') || [];
+      ok(missed.length === 1, 'the expired once-slot was not reported as missed');
+      ok(missed[0].name === 'alarm-x:0' && missed[0].when === past,
+        'the missed record has the wrong identity');
+    }
+  },
+  {
+    id: 11,
+    name: '11. a reset clears the whole live set',
+    run: async workerPath => {
+      const {storage, alarms, chrome} = await loadWorker(workerPath);
+      const future = Date.now() + 3600000;
+      alarms.create('timer-1', {when: future});
+      alarms.create('alarm-a:0', {when: future});
+      alarms.create('audio-alarm-a/1', {when: future});
+      // post-reset storage: mirror and definitions are empty
+      storage.seed({
+        'alarms': [],
+        'alarms-storage': {}
+      });
+      chrome.runtime.onMessage.fire({method: 'restore-alarms'}, {}, () => {});
+      await sleep(300);
+      await settle(storage);
+      ok(!alarms.map.has('timer-1'), 'the live timer survived the reset');
+      ok(!alarms.map.has('alarm-a:0'), 'a live alarm slot survived the reset');
+      ok(!alarms.map.has('audio-alarm-a/1'), 'a live snooze survived the reset');
+      ok(Object.keys(storage.mirror() || {}).length === 0, 'the mirror was not empty after the reset');
+    }
+  },
+  {
+    id: 12,
+    name: '12. the startup pass sweeps live orphans and runs once',
+    run: async workerPath => {
+      const {storage, alarms, chrome} = await loadWorker(workerPath);
+      const future = Date.now() + 3600000;
+      // live leftovers with no mirror behind them (what a pre-fix import
+      // or reset leaves behind on a packed install)
+      alarms.create('alarm-orphan:0', {when: future});
+      alarms.create('audio-alarm-orphan/2', {when: future});
+      storage.seed({
+        'alarms': [],
+        'alarms-storage': {'timer-9': {when: future}}
+      });
+      chrome.runtime.onStartup.fire();
+      await sleep(300);
+      await settle(storage);
+      ok(!alarms.map.has('alarm-orphan:0'), 'an orphaned alarm slot survived the startup sweep');
+      ok(!alarms.map.has('audio-alarm-orphan/2'), 'an orphaned snooze survived the startup sweep');
+      const built = alarms.calls.filter(c => c === 'timer-9').length;
+      ok(built === 1, 'the startup pass did not rebuild the mirror entry');
+      // the guard makes a second startup pass a no-op
+      chrome.runtime.onStartup.fire();
+      await sleep(200);
+      await settle(storage);
+      ok(alarms.calls.filter(c => c === 'timer-9').length === built,
+        'the guarded second pass re-ran the restore');
     }
   }
 ];

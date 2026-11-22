@@ -9,7 +9,9 @@ const clamp01 = v => {
   return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8;
 };
 
-chrome.storage.local.get({
+// refresh the form from the stored preferences; re-run after an import
+// or reset, which replace them wholesale
+const load = () => chrome.storage.local.get({
   'volume-timer': 0.8,
   'volume-alarm': 0.8,
   'volume-misc': 0.8,
@@ -29,6 +31,7 @@ chrome.storage.local.get({
   document.getElementById('badge-color').value = prefs['badge-color'];
   document.getElementById('badge-color').disabled = !prefs['badge-enabled'];
 });
+load();
 document.getElementById('badge-enabled').addEventListener('change', e => {
   document.getElementById('badge-color').disabled = !e.target.checked;
 });
@@ -59,8 +62,14 @@ document.getElementById('reset').addEventListener('click', e => {
   else {
     localStorage.clear();
     chrome.storage.local.clear(() => {
-      chrome.runtime.reload();
-      window.close();
+      // the live alarms survive a plain reload; make the worker rebuild
+      // the (now empty) live set from the (now empty) mirror instead
+      chrome.runtime.sendMessage({
+        method: 'restore-alarms'
+      }, () => chrome.runtime.lastError);
+      toast.textContent = 'Preferences reset!';
+      window.setTimeout(() => toast.textContent = '', 750);
+      load();
     });
   }
 });
@@ -159,7 +168,15 @@ document.getElementById('import').addEventListener('click', () => {
           report('Import failed: ' + chrome.runtime.lastError.message);
           return;
         }
-        chrome.runtime.reload();
+        // runtime.reload() fires neither onInstalled nor onStartup, so
+        // the imported alarms-storage would stay unrestored until the
+        // next browser start (and the pre-import live alarms would keep
+        // ringing); rebuild the live set explicitly instead
+        chrome.runtime.sendMessage({
+          method: 'restore-alarms'
+        }, () => chrome.runtime.lastError);
+        load();
+        report('Preferences imported!');
       });
     });
   }

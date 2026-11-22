@@ -114,8 +114,9 @@ const offscreen = {
 };
 
 // silent "missed while the browser was closed" summary; opened once per
-// startup pass that found newly missed entries (the page lists every
-// undismissed record, not just the fresh ones)
+// restore pass that found newly missed entries (browser start, install
+// or import; the page lists every undismissed record, not just the
+// fresh ones)
 const missed = {
   open() {
     chrome.storage.local.get({
@@ -439,6 +440,68 @@ const alarms = {
     step();
   };
 
+  // full reconcile of the live alarm set from the stored mirror: used by
+  // the startup/install pass and by the options page after a preference
+  // import or reset ('restore-alarms' message). the reload those used to
+  // perform fires neither onInstalled nor onStartup, and a packed install
+  // keeps its pre-import live alarms across it, so without this pass the
+  // imported mirror would stay dead until the next browser start while
+  // the stale live set keeps ringing
+  alarms.restore = async () => {
+    const prefs = await chrome.storage.local.get({
+      'alarms-storage': {},
+      'alarms': [],
+      'missed-alarms': []
+    });
+    // storage is an untrusted boundary (imported preferences): repair the
+    // shapes in place so the passes below cannot throw
+    const defs = new Map((Array.isArray(prefs.alarms) ? prefs.alarms : []).map(a => [a.id, a]));
+    const storage = (prefs['alarms-storage'] && typeof prefs['alarms-storage'] === 'object' &&
+      Array.isArray(prefs['alarms-storage']) === false) ? prefs['alarms-storage'] : {};
+    prefs['missed-alarms'] = Array.isArray(prefs['missed-alarms']) ? prefs['missed-alarms'] : [];
+    const {fresh} = normalizeStorage(defs, storage, prefs['missed-alarms']);
+    const entries = Object.entries(storage);
+
+    // the normalized mirror is the whole truth: wipe the live set and
+    // rebuild from the survivors in a single debounced flush. unlike
+    // alarms.removeAll this keeps cache entries pending from an alarm
+    // firing alongside the pass (the snoozes of an alarm that just rang
+    // at browser start must survive the rebuild); import and reset
+    // cannot carry such entries, their message arrives from a page flow.
+    // the flush clears every live alarm from its own snapshot
+    // (BADGE_TICK excluded by alarms.getAll), the creates settle BEFORE
+    // the mirror write lands, and entries normalizeStorage dropped never
+    // come back
+    cache.wipe = true;
+    for (const [name, info] of entries) {
+      alarms.create(name, info);
+    }
+    // an empty mirror (import or reset) must still flush the wipe: the
+    // creates above are what schedule the debounced flush
+    step();
+
+    // expired one-shot/timer/snooze entries normalizeStorage collected
+    // (dropped above) are reported as missed: append inside the single
+    // writer queue, deduped by the same (name, when) identity, and open
+    // the window only after the write landed so it reads the fresh list
+    if (fresh) {
+      serialize(async () => {
+        const p = await chrome.storage.local.get({
+          'missed-alarms': []
+        });
+        const list = Array.isArray(p['missed-alarms']) ? p['missed-alarms'] : [];
+        const add = prefs['missed-alarms'].filter(m =>
+          list.some(x => x.name === m.name && x.when === m.when) === false);
+        if (add.length) {
+          p['missed-alarms'] = list.concat(add).sort((a, b) => a.when - b.when);
+          await chrome.storage.local.set(p);
+        }
+        missed.open();
+      });
+    }
+    badge.update();
+  };
+
   alarms.fire = new Proxy(alarms.fire, {
     apply(target, self, args) {
       const o = args[0];
@@ -480,37 +543,16 @@ const alarms = {
   });
 }
 {
-  const once = async () => {
+  // startup/install pass: alarms.restore rebuilds the live set from the
+  // mirror. the guard only covers these triggers - a 'restore-alarms'
+  // message must still run in a worker instance that already did a pass
+  // (an import can happen long after the browser started)
+  const once = () => {
     if (once.done) {
       return;
     }
     once.done = true;
-
-    const prefs = await chrome.storage.local.get({
-      'alarms-storage': {},
-      'alarms': [],
-      'missed-alarms': []
-    });
-    // storage is an untrusted boundary (imported preferences): repair a
-    // corrupted list in place so the append below cannot throw
-    prefs['missed-alarms'] = Array.isArray(prefs['missed-alarms']) ? prefs['missed-alarms'] : [];
-    const defs = new Map(prefs.alarms.map(a => [a.id, a]));
-    const {changed, fresh} = normalizeStorage(defs, prefs['alarms-storage'], prefs['missed-alarms']);
-    for (const [name, info] of Object.entries(prefs['alarms-storage'])) {
-      const o = await chrome.alarms.get(name);
-      if (!o || (name.startsWith('alarm-') && o.scheduledTime !== info.when)) {
-        await chrome.alarms.create(name, info);
-        console.info('Force Creating a new Alarm', name, info);
-      }
-    }
-    if (changed) {
-      // awaited so the missed window (opened below) reads the fresh list
-      await chrome.storage.local.set(prefs);
-    }
-    if (fresh) {
-      missed.open();
-    }
-    badge.update();
+    alarms.restore();
   };
   chrome.runtime.onStartup.addListener(once);
   chrome.runtime.onInstalled.addListener(once);
@@ -652,6 +694,10 @@ const onMessage = (request, sender, respose) => {
         alarms.create(job.name, job.info);
       }
     }
+  }
+  else if (request.method === 'restore-alarms') {
+    // sent by the options page after an import or reset
+    alarms.restore().catch(e => console.warn('restore failed', e));
   }
   else if (request.method === 'remove-all-notifications') {
     notifications.kill();
