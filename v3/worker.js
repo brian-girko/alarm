@@ -37,6 +37,13 @@ const notifications = {
       type: 'popup',
       url: 'data/notify/index.html?' + args.toString()
     };
+    // the intended outer size travels to the page: its first geometry
+    // report may disagree (macOS opens freshly created popup windows
+    // double-scaled on mixed-DPI screens - bugzilla 1554229; Linux/GTK
+    // applies the create size to the content area - bugzilla 581863),
+    // and the page echoes this back so the position handler can heal it
+    args.set('w', p.width);
+    args.set('h', p.height);
     chrome.windows.create(p);
   },
   kill() {
@@ -124,6 +131,10 @@ const missed = {
     }, prefs => {
       const args = new URLSearchParams();
       args.set('position', prefs['notify-position']);
+      // same size echo as notifications.create: the missed window heals
+      // the same create-time mis-size through its position report
+      args.set('w', 420);
+      args.set('h', 400);
       chrome.windows.create({
         width: 420,
         height: 400,
@@ -761,21 +772,35 @@ const onMessage = (request, sender, respose) => {
     });
   }
   else if (request.method === 'position') {
+    // intended outer size of this window (echoed back from the query it
+    // was created with): when the reported geometry disagrees - macOS
+    // opens freshly created popup windows double-scaled on mixed-DPI
+    // screens (bugzilla 1554229), Linux/GTK applies the create size to
+    // the content area (bugzilla 581863) - the size is re-asserted in
+    // the same update that places the window; a post-open resize heals
+    // both. Chrome reports the intended size and gets placement only
+    const w = Number(request.size?.width) || request.window.width;
+    const h = Number(request.size?.height) || request.window.height;
+    const size = (request.window.width !== w || request.window.height !== h) ?
+      {width: w, height: h} : {};
     if (request.position === 'center') {
       chrome.windows.update(sender.tab.windowId, {
-        left: parseInt((request.screen.width - request.window.width) / 2),
-        top: parseInt((request.screen.height - request.window.height) / 2)
+        ...size,
+        left: parseInt((request.screen.width - w) / 2),
+        top: parseInt((request.screen.height - h) / 2)
       });
     }
     else if (request.position === 'br') {
       chrome.windows.update(sender.tab.windowId, {
-        left: parseInt(request.screen.width - request.window.width),
-        top: parseInt(request.screen.height - request.window.height)
+        ...size,
+        left: parseInt(request.screen.width - w),
+        top: parseInt(request.screen.height - h)
       });
     }
     else if (request.position === 'tr') {
       chrome.windows.update(sender.tab.windowId, {
-        left: parseInt(request.screen.width - request.window.width),
+        ...size,
+        left: parseInt(request.screen.width - w),
         top: 0
       });
     }

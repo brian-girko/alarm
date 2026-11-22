@@ -19,6 +19,12 @@
  * block catches the failure and takes its fallback path, which is the
  * same route a real autoplay block takes.
  *
+ * Scenarios 8-10 cover the create-time mis-size healing: the notify
+ * window echoes the outer size it was created with, and the worker
+ * re-asserts it through the position update whenever the reported
+ * geometry disagrees (macOS double-scale, bugzilla 1554229; Linux/GTK
+ * inner-size semantics, bugzilla 581863).
+ *
  * Usage:
  *   node tests/notify.test.js
  *   SCENARIOS=2,5 node tests/notify.test.js   # restrict the run
@@ -38,8 +44,9 @@ const ok = (cond, msg) => {
 
 // the query the worker composes for the notify window; every field the
 // page reads must be present (args.get('name') is dereferenced bare)
+// plus the intended outer size the window was created with
 const SEARCH = '?name=alarm-1&title=Coffee&message=Ready&sound=sounds/1.mp3' +
-  '&volume=0.8&repeats=2&snooze=false&position=center';
+  '&volume=0.8&repeats=2&snooze=false&position=center&w=580&h=250';
 
 // listener hub shared by all stubbed chrome events
 const hub = () => {
@@ -209,11 +216,16 @@ const makeElements = () => {
 
 // runs the notify page in its own context over the given storage; the
 // contexts are separate per load, like separate notification windows
-const loadPage = async storage => {
+const loadPage = async (storage, search = SEARCH) => {
   const src = fs.readFileSync(path.join(root, 'data/notify/index.js'), 'utf8');
   const {byId, bySelector} = makeElements();
   const sent = [];
-  const win = {outerWidth: 580, outerHeight: 250, close() {}};
+  const win = {
+    outerWidth: 580,
+    outerHeight: 250,
+    close() {},
+    addEventListener() {}
+  };
   const chrome = {
     runtime: {
       lastError: null,
@@ -230,7 +242,7 @@ const loadPage = async storage => {
   const context = vm.createContext({
     chrome,
     window: win,
-    location: {search: SEARCH},
+    location: {search},
     screen: {width: 1920, height: 1080},
     document: {
       querySelector: s => bySelector[s],
@@ -359,6 +371,72 @@ const scenarios = [
       storage.onChanged.fire({'notify-on-top': {oldValue: false}});
       ok(page.byId['bring-to-front'].checked === true,
         'a cleared pref did not fall back to the checked default');
+    }
+  },
+  {
+    id: 8,
+    name: '8. the notify window reports its intended size for healing',
+    run: async () => {
+      const storage = makeStorage();
+      const page = await loadPage(storage);
+      const m = page.sent.find(x => x.method === 'position');
+      ok(m, 'the notify window did not report its position');
+      ok(m.size && m.size.width === 580 && m.size.height === 250,
+        'the position message does not carry the intended size');
+      ok(m.window.width === 580 && m.window.height === 250,
+        'the position message lost the window geometry report');
+      // the intended size comes from the query the worker created the
+      // window with; a stale/foreign query falls back to the geometry
+      const stale = await loadPage(makeStorage(), '?name=a&position=tr');
+      const s = stale.sent.find(x => x.method === 'position').size;
+      ok(s.width === 580 && s.height === 250,
+        'a query without the size fell back to the window geometry');
+    }
+  },
+  {
+    id: 9,
+    name: '9. an oversized report is healed by a size-carrying update',
+    run: async () => {
+      const {log, chrome} = await loadWorker();
+      // what macOS reports right after create on a mixed-DPI setup: the
+      // double-scaled geometry of bugzilla 1554229
+      chrome.runtime.onMessage.fire({
+        method: 'position',
+        screen: {width: 1920, height: 1080},
+        window: {width: 1160, height: 500},
+        size: {width: 580, height: 250},
+        position: 'center'
+      }, {tab: {id: 11, windowId: 22}}, () => {});
+      await sleep(50);
+      ok(log.windows.length === 1, 'the position message was dropped');
+      const p = log.windows[0].props;
+      ok(p.width === 580 && p.height === 250,
+        'the double-scaled window was not resized back to the intended size');
+      ok(p.left === 670 && p.top === 415,
+        'the placement did not use the intended size');
+    }
+  },
+  {
+    id: 10,
+    name: '10. a matching report is placed without a size override',
+    run: async () => {
+      const {log, chrome} = await loadWorker();
+      // Chrome (or a healed Firefox window, after its resize re-report):
+      // the reported geometry already is the intended one
+      chrome.runtime.onMessage.fire({
+        method: 'position',
+        screen: {width: 1920, height: 1080},
+        window: {width: 580, height: 250},
+        size: {width: 580, height: 250},
+        position: 'br'
+      }, {tab: {id: 11, windowId: 22}}, () => {});
+      await sleep(50);
+      ok(log.windows.length === 1, 'the position message was dropped');
+      const p = log.windows[0].props;
+      ok(p.width === undefined && p.height === undefined,
+        'a matching report must not carry a size override');
+      ok(p.left === 1340 && p.top === 830,
+        'the bottom-right placement drifted');
     }
   }
 ];

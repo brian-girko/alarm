@@ -7,8 +7,12 @@ const mode = args.get('mode');
 // the standalone window opens with ?mode=pp; the toolbar popup has no query
 document.documentElement.classList.add(mode ?? 'bp');
 
-// supports page zoom other than 100% on the popup mode
-if (mode !== 'pp') {
+// supports page zoom other than 100% on the popup mode; Firefox-only
+// guard: Firefox sizes the panel from the body layout box and re-measures
+// it after mutations, so reading the viewport here is circular - the
+// pre-layout read pins the body to a placeholder and the panel collapses
+// (the alarm-entries flex row absorbs the shrink). the CSS height stands
+if (mode !== 'pp' && navigator.userAgent.includes('Firefox') === false) {
   document.body.style.height = (window.visualViewport.height - 1) + 'px';
 }
 

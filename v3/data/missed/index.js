@@ -2,9 +2,10 @@
 
 const args = new URLSearchParams(location.search);
 
-// place the window in the user's preferred corner (the same message the
-// ring window sends; the worker performs the actual move)
-chrome.runtime.sendMessage({
+// the same position report the ring window sends (the worker performs
+// the actual update); the size echo lets it heal a create-time mis-size
+// and the one-shot resize listener re-reports once the correction lands
+const position = () => chrome.runtime.sendMessage({
   method: 'position',
   screen: {
     width: screen.width,
@@ -14,8 +15,14 @@ chrome.runtime.sendMessage({
     width: window.outerWidth,
     height: window.outerHeight
   },
+  size: {
+    width: Number(args.get('w')) || window.outerWidth,
+    height: Number(args.get('h')) || window.outerHeight
+  },
   position: args.get('position')
 }, () => chrome.runtime.lastError);
+position();
+window.addEventListener('resize', position, {once: true});
 
 const MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',

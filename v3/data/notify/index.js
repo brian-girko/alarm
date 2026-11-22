@@ -1,5 +1,35 @@
 const args = new URLSearchParams(location.search);
 
+// place the window at the user's preferred position and let the worker
+// heal a create-time mis-size (macOS opens freshly created popup windows
+// double-scaled on mixed-DPI screens - bugzilla 1554229; Linux/GTK
+// applies the create size to the content area - bugzilla 581863). the
+// intended outer size travels in the query (this window was created with
+// it), because the first geometry report may disagree; the worker
+// re-asserts the size in the same update that places the window, and the
+// resize event fires once that correction lands - reporting again lets
+// the placement settle on the healed geometry. Chrome reports the
+// intended size straight away (the worker places only); its one-shot
+// listener at worst repeats an identical placement
+const position = () => chrome.runtime.sendMessage({
+  method: 'position',
+  screen: {
+    width: screen.width,
+    height: screen.height
+  },
+  window: {
+    width: window.outerWidth,
+    height: window.outerHeight
+  },
+  size: {
+    width: Number(args.get('w')) || window.outerWidth,
+    height: Number(args.get('h')) || window.outerHeight
+  },
+  position: args.get('position')
+}, () => chrome.runtime.lastError);
+position();
+window.addEventListener('resize', position, {once: true});
+
 document.querySelector('h1').textContent = args.get('title');
 document.querySelector('p').textContent = args.get('message');
 if (args.get('name').indexOf('alarm') !== -1) {
