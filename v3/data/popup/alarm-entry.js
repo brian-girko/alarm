@@ -98,28 +98,24 @@ sheet.replaceSync(`
     text-decoration: underline dashed;
     opacity: 0.5;
   }
-  input[type="checkbox"] {
-    visibility: hidden;
-    width: 28px;
-    height: 28px;
-  }
+  /* the switch is painted on the input itself: Firefox renders no ::after
+     on input elements, so the graphic must not live in a pseudo-element */
   input[type="checkbox"].switch {
     grid-area: switch;
     justify-self: end;
-  }
-  input[type="checkbox"].switch::after {
-    content: '';
+    appearance: none;
     width: 32px;
-    height: 100%;
-    line-height: 28px;
-    display: inline-block;
+    height: 28px;
     background: url('icons/switch-off.svg') center center no-repeat;
     background-size: 32px;
-    visibility: visible;
     cursor: pointer;
   }
-  input[type="checkbox"].switch:checked::after {
+  input[type="checkbox"].switch:checked {
     background-image: url('icons/switch-on.svg');
+  }
+  input[type="checkbox"].switch:focus-visible {
+    outline: 2px solid var(--color);
+    outline-offset: 1px;
   }
   input[type="button"] {
     appearance: none;
