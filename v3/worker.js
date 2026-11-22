@@ -288,68 +288,154 @@ const alarms = {
   get(name, c) {
     chrome.alarms.get(name, c);
   },
-  getAll(c) {
-    chrome.alarms.getAll(as => c(as.filter(a => a.name !== BADGE_TICK)));
+  getAll(c = () => {}) {
+    return new Promise(resolve => chrome.alarms.getAll(as => {
+      const os = as.filter(a => a.name !== BADGE_TICK);
+      resolve(os);
+      c(os);
+    }));
   }
 };
 
 // create or clear
 {
+  // pending 'alarms-storage' changes, applied by the debounced flush
+  // below; create always wins over a pending clear/remove of the same
+  // name
   const cache = {
     create: new Map(),
-    clear: new Set()
+    clear: new Set(),
+    // mirror-only deletions for fired one-shot slots: the browser
+    // drops a fired alarm on its own, so unlike cache.clear these must
+    // not call chrome.alarms nor sweep sibling slots of the same id
+    remove: new Set(),
+    // reset the whole mirror on the next flush ("remove all")
+    wipe: false
   };
+  // 'alarms-storage' has a single writer: every flush is queued here
+  // and only counts as done after its write landed, so two
+  // read-modify-write cycles can never interleave and silently drop
+  // each other's entries (debouncing alone does not guarantee that -
+  // a flush can still be writing while the next one reads a snapshot
+  // that predates its write)
+  const writers = [];
+  let writing = false;
+  const serialize = writer => {
+    writers.push(writer);
+    if (writing) {
+      return;
+    }
+    writing = true;
+    (async () => {
+      while (writers.length) {
+        try {
+          await writers.shift()();
+        }
+        catch (e) {
+          console.warn('alarms-storage writer failed', e);
+        }
+      }
+      writing = false;
+    })();
+  };
+
+  const flush = () => serialize(async () => {
+    const as = await alarms.getAll();
+    const prefs = await chrome.storage.local.get({
+      'alarms-storage': {}
+    });
+    if (cache.wipe) {
+      cache.wipe = false;
+      prefs['alarms-storage'] = {};
+      // "remove all": clear every live browser alarm in this same
+      // flush, from this flush's own snapshot (a getAll in the caller
+      // can predate a queued flush's creates), so the clears settle
+      // before the mirror write lands instead of racing the popup's
+      // re-render
+      for (const a of as) {
+        cache.clear.add(a.name);
+      }
+    }
+    // clear old alarms
+    const keys = [
+      ...cache.clear.keys(),
+      ...cache.create.keys()
+    ].map(s => s.split(':')[0]);
+
+    // slot names are '<id>:<index>', so require the ':' delimiter to
+    // avoid sweeping prefix-colliding ids ('alarm-0.8' vs 'alarm-0.81');
+    // colon-less names (timer-1, snoozes) must equal their key exactly
+    for (const a of as.filter(a => keys.some(key => a.name === key || a.name.startsWith(key + ':')))) {
+      cache.clear.add(a.name);
+    }
+
+    const jobs = [];
+    // clear alarms
+    for (const name of cache.clear) {
+      if (cache.create.has(name) === false) {
+        jobs.push(chrome.alarms.clear(name));
+        delete prefs['alarms-storage'][name];
+      }
+    }
+    cache.clear.clear();
+    // drop storage mirrors of fired one-shot slots
+    for (const name of cache.remove) {
+      if (cache.create.has(name) === false) {
+        delete prefs['alarms-storage'][name];
+      }
+    }
+    cache.remove.clear();
+    // set new alarms
+    for (const [name, info] of cache.create) {
+      jobs.push(chrome.alarms.create(name, info));
+      prefs['alarms-storage'][name] = info;
+    }
+    cache.create.clear();
+    // browser alarms settle BEFORE the mirror write lands: the popup
+    // re-renders on the storage.onChanged event and queries
+    // chrome.alarms (entry.update derives its scheduled state from
+    // that list), so a write landing while the jobs are in flight
+    // renders stale toggle state
+    await Promise.allSettled(jobs);
+    // completes only after the write landed, so a queued flush re-reads
+    // the updated mirror instead of a snapshot that predates this write
+    await chrome.storage.local.set(prefs);
+    // the badge reads the settled browser state; it is not part of the
+    // mirror write and must not block the writer queue
+    (async () => {
+      await badge.update();
+    })();
+  });
+
   const step = () => {
     clearTimeout(step.id);
-    step.id = setTimeout(() => {
-      alarms.getAll(as => {
-        chrome.storage.local.get({
-          'alarms-storage': {}
-        }, prefs => {
-          // clear old alarms
-          const keys = [
-            ...cache.clear.keys(),
-            ...cache.create.keys()
-          ].map(s => s.split(':')[0]);
-
-          // slot names are '<id>:<index>', so require the ':' delimiter to
-          // avoid sweeping prefix-colliding ids ('alarm-0.8' vs 'alarm-0.81');
-          // colon-less names (timer-1, snoozes) must equal their key exactly
-          for (const a of as.filter(a => keys.some(key => a.name === key || a.name.startsWith(key + ':')))) {
-            cache.clear.add(a.name);
-          }
-
-          const jobs = [];
-          // clear alarms
-          for (const name of cache.clear) {
-            if (cache.create.has(name) === false) {
-              jobs.push(chrome.alarms.clear(name));
-              delete prefs['alarms-storage'][name];
-            }
-          }
-          cache.clear.clear();
-          // set new alarms
-          for (const [name, info] of cache.create) {
-            jobs.push(chrome.alarms.create(name, info));
-            prefs['alarms-storage'][name] = info;
-          }
-          cache.create.clear();
-          chrome.storage.local.set(prefs);
-          Promise.allSettled(jobs).then(() => badge.update());
-        });
-      });
-    }, 100);
+    step.id = setTimeout(flush, 100);
   };
 
   alarms.create = (name, info) => {
     cache.create.set(name, info);
     cache.clear.delete(name);
+    cache.remove.delete(name);
     step();
   };
   alarms.clear = (name, callback = () => {}) => {
     cache.clear.add(name);
     cache.create.delete(name);
+    cache.remove.delete(name);
     callback();
+    step();
+  };
+
+  // remove every scheduled alarm/timer: entries pending in the cache
+  // predate the wipe and must not resurrect anything, while entries
+  // queued after this call land on top of the fresh mirror. the flush
+  // consuming the wipe also clears every live browser alarm from its
+  // own snapshot, so nothing is left orphaned in chrome.alarms
+  alarms.removeAll = () => {
+    cache.create.clear();
+    cache.clear.clear();
+    cache.remove.clear();
+    cache.wipe = true;
     step();
   };
 
@@ -357,12 +443,36 @@ const alarms = {
     apply(target, self, args) {
       const o = args[0];
       if (!o.periodInMinutes) {
-        chrome.storage.local.get({
-          'alarms-storage': {}
-        }, prefs => {
-          delete prefs['alarms-storage'][o.name];
-          chrome.storage.local.set(prefs);
-        });
+        // the browser drops a fired one-shot alarm by itself, so only
+        // its storage mirror needs cleanup. enqueue it on the same
+        // cache instead of running a second read-modify-write cycle on
+        // 'alarms-storage' that could interleave with an in-flight
+        // flush and drop its entries (or be dropped by it)
+        cache.remove.add(o.name);
+        step();
+        // remember that a fired alarm slot actually rang: the browser has
+        // already dropped it, so this log is the only way for the popup to
+        // tell a rung once-date from one that never got scheduled (dropped
+        // at toggle time, or missed while the browser was closed). it joins
+        // the same serialized writer queue and never touches
+        // 'alarms-storage'; snoozes ('audio-') and timers are not slots
+        if (o.name.startsWith('alarm-') && o.name.includes(':')) {
+          serialize(async () => {
+            const prefs = await chrome.storage.local.get({
+              'fired-slots': []
+            });
+            // storage is an untrusted boundary (imported preferences)
+            const list = Array.isArray(prefs['fired-slots']) ? prefs['fired-slots'] : [];
+            list.push({
+              id: o.name.split(':')[0],
+              when: o.scheduledTime // epoch the slot was due
+            });
+            // bounded: only the newest records are ever compared against
+            // the live date chips of current definitions
+            prefs['fired-slots'] = list.slice(-200);
+            await chrome.storage.local.set(prefs);
+          });
+        }
       }
 
       return Reflect.apply(target, self, args);
@@ -668,12 +778,12 @@ chrome.storage.onChanged.addListener(ps => {
 }
 chrome.contextMenus.onClicked.addListener(info => {
   if (info.menuItemId === 'remove-all-alarms') {
-    alarms.getAll(as => {
-      Promise.allSettled(as.map(a => chrome.alarms.clear(a.name))).then(() => badge.update());
-    });
-    chrome.storage.local.set({
-      'alarms-storage': {}
-    });
+    // one serialized flush wipes the mirror and clears every live
+    // browser alarm: a direct chrome.alarms.clear here could still be
+    // in flight when the wipe's write lands, and the popup re-renders
+    // on that write (the flush settles its clears first). cache
+    // entries pending from before the click are purged by removeAll
+    alarms.removeAll();
   }
   else if (info.menuItemId === 'remove-all-snoozes') {
     alarms.getAll(as => {

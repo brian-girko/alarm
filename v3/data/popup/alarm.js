@@ -55,11 +55,22 @@ const scheduleEntry = (entry, on) => chrome.runtime.sendMessage({
   }));
   // set new alarms
   if (on) {
-    schedule.slots(entry.o).forEach((info, index) => jobs.push({
-      method: 'set-alarm',
-      info,
-      name: entry.dataset.id + ':' + index
-    }));
+    const slots = schedule.slots(entry.o);
+    if (slots.length === 0) {
+      // a once-alarm whose explicit dates are all in the past: nothing can
+      // be scheduled, so refuse the toggle instead of leaving the switch on
+      // with no live slot behind it (save() blocks new definitions like
+      // this; this path catches ones that went stale in storage). the
+      // stale-slot clears above are still sent
+      entry.passed();
+    }
+    else {
+      slots.forEach((info, index) => jobs.push({
+        method: 'set-alarm',
+        info,
+        name: entry.dataset.id + ':' + index
+      }));
+    }
   }
   chrome.runtime.sendMessage({
     method: 'batch',
@@ -89,8 +100,13 @@ container.addEventListener('remove', ({target: entry}) => {
 const init = (callback = () => {}) => chrome.runtime.sendMessage({
   method: 'get-alarms'
 }, alarms => chrome.storage.local.get({
-  'alarms': []
+  'alarms': [],
+  // epochs of one-shot slots that actually rang (appended by the worker
+  // on fire); entries use them to tell a rung date from a dropped one
+  'fired-slots': []
 }, prefs => {
+  // storage is an untrusted boundary (imported preferences)
+  const fired = Array.isArray(prefs['fired-slots']) ? prefs['fired-slots'] : [];
   const entries = document.querySelector('.alarm div[data-id="entries"]');
 
   // reuse existing entries keyed by alarm id to avoid rebuilding the
@@ -107,7 +123,7 @@ const init = (callback = () => {}) => chrome.runtime.sendMessage({
     else {
       entry = document.createElement('alarm-entry');
     }
-    entry.update(o, alarms);
+    entry.update(o, alarms, fired);
     list.push(entry);
   }
   // remove entries whose alarm is gone
@@ -290,6 +306,9 @@ alarm.toast = () => {
     a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
   const onchange = () => {
+    // the once-alarm schedulability error refers to the draft state, which
+    // just changed; save() re-evaluates and re-raises it when needed
+    clock.setCustomValidity('');
     const o = readDraft();
     const current = document.querySelector('.alarm [data-id=current]');
     const days = o.days || [];
@@ -317,7 +336,10 @@ alarm.toast = () => {
         current.textContent = (sameDay(d, n) ? 'Today - ' : sameDay(d, t) ? 'Tomorrow - ' : 'Once - ') + alarm.format(d);
       }
       else {
-        current.textContent = 'Once';
+        // every explicit date of this once-draft is already in the past,
+        // so nothing can be scheduled; save() blocks it with native
+        // feedback as well
+        current.textContent = 'Already passed - pick a future time';
       }
     }
   };
@@ -373,6 +395,14 @@ alarm.toast = () => {
       // anchored at the day pills
       pills[0].setCustomValidity('Select at least one day');
       pills[0].reportValidity();
+      return;
+    }
+    if (o.repeat === 'once' && schedule.slots(o).length === 0) {
+      // every explicit date of this once-alarm is already in the past, so
+      // nothing could ever be scheduled; native feedback is anchored at the
+      // clock (a future time, or dropping the stale date chip, clears it)
+      clock.setCustomValidity('Time already passed - pick a future time or remove the date');
+      clock.reportValidity();
       return;
     }
     const a = {

@@ -3,10 +3,15 @@
 
 // <alarm-entry>: one alarm in the list view. The markup, styles, and
 // interactions live in an open shadow root; the page drives the view through
-// update(raw, alarms) / restart() and listens to the bubbling custom events:
+// update(raw, alarms, fired) / restart() / passed() and listens to the
+// bubbling custom events:
 //   toggle - the enable/disable switch changed (scheduling lives in alarm.js)
 //   edit   - the edit button was clicked
 //   remove - the remove button was clicked
+
+// hint appended to the title of a once-alarm whose dates are all in the
+// past (no schedulable occurrence left)
+const PASSED = 'time already passed - edit to pick a future time';
 
 const template = document.createElement('template');
 template.innerHTML = `
@@ -88,6 +93,10 @@ sheet.replaceSync(`
   [data-id="date"] .fired {
     text-decoration: line-through;
     opacity: 0.4;
+  }
+  [data-id="date"] .passed {
+    text-decoration: underline dashed;
+    opacity: 0.5;
   }
   input[type="checkbox"] {
     visibility: hidden;
@@ -187,7 +196,7 @@ class AlarmEntry extends HTMLElement {
     this.setAttribute('disabled', this.#switch.checked ? 'false' : 'true');
   }
 
-  update(raw, alarms) {
+  update(raw, alarms, fired = []) {
     const o = this.#o = schedule.normalize(raw);
     const {id, time, name} = o;
     // time
@@ -197,10 +206,18 @@ class AlarmEntry extends HTMLElement {
     // upcoming occurrence(s)
     const slots = schedule.slots(o);
     const active = alarms.some(a => a.name.startsWith(id + ':'));
-    // scheduled epochs of this alarm's live slots; a fired one-shot ("once")
-    // slot vanishes from chrome.alarms - render that weekday/date struck
-    // through. an OFF alarm has no slots either (cleared, not fired), so it
-    // renders without strikes
+    // a once-alarm whose explicit dates are all in the past has no
+    // schedulable occurrence left (schedule.slots drops past ones), so the
+    // switch can never turn it on; the entry explains itself instead
+    const passed = o.repeat === 'once' && slots.length === 0;
+    // epochs of this alarm's one-shot slots that actually rang; the browser
+    // drops a fired alarm on its own, so this log is the only way to tell a
+    // rung date from one that never got scheduled (dropped at toggle time,
+    // or missed while the browser was closed)
+    const rang = new Set(
+      fired.filter(f => f && f.id === id).map(f => Number(f.when))
+    );
+    // scheduled epochs of this alarm's live slots
     const times = new Set(
       alarms.filter(a => a.name.startsWith(id + ':'))
         .map(a => a.scheduledTime)
@@ -208,15 +225,20 @@ class AlarmEntry extends HTMLElement {
     const pending = new Set(
       [...times].map(t => new Date(t).getDay())
     );
+    const rangDays = new Set(
+      [...rang].map(t => new Date(t).getDay())
+    );
 
     this.#date.textContent = '';
     this.#date.classList.remove('range');
 
-    const span = (text, fired = false) => {
+    const span = (text, state = '') => {
       const span = document.createElement('span');
       span.textContent = text;
-      if (fired) {
-        span.classList.add('fired');
+      if (state) {
+        span.classList.add(state);
+        span.title = state === 'fired' ? 'Already rang' :
+          'Did not ring - time already passed or browser was closed';
       }
       this.#date.appendChild(span);
     };
@@ -229,12 +251,19 @@ class AlarmEntry extends HTMLElement {
     }
     else if (o.repeat === 'once' && ((o.dates?.length ?? 0) + (o.days?.length ?? 0) > 0)) {
       this.#date.classList.add('range');
+      // occurrence state of a chip on an active alarm: plain = scheduled,
+      // fired = actually rang, passed = gone without ringing. an OFF alarm
+      // has no slots either (cleared, not fired), so it renders plain
+      const state = when => active === false ? '' :
+        (times.has(when) ? '' : (rang.has(when) ? 'fired' :
+          (when <= Date.now() ? 'passed' : '')));
       for (const {y, m, d} of (o.dates || [])) {
         const when = schedule.resolve(Number(y), Number(m), Number(d), time);
-        span(d + ' ' + MONTHS[Number(m) - 1], active && times.has(when) === false);
+        span(d + ' ' + MONTHS[Number(m) - 1], state(when));
       }
       for (const d of (o.days || [])) {
-        span(PILL[Number(d)], active && pending.has(Number(d)) === false);
+        span(PILL[Number(d)], active === false ? '' :
+          (pending.has(Number(d)) ? '' : (rangDays.has(Number(d)) ? 'fired' : 'passed')));
       }
     }
     else if (o.repeat === 'daily') {
@@ -257,9 +286,21 @@ class AlarmEntry extends HTMLElement {
     this.dataset.id = id;
     this.setAttribute('disabled', active === false);
     this.#switch.checked = active;
-    this.title = this.#description.textContent = name || '';
+    this.#description.textContent = name || '';
+    this.title = passed ? (name ? name + ' - ' : '') + PASSED : (name || '');
 
-    this.#once.textContent = o.repeat === 'once' ? 'once' : '';
+    this.#once.textContent = o.repeat === 'once' ? (passed ? 'passed' : 'once') : '';
+  }
+
+  // a toggle attempt hit a once-alarm with no schedulable occurrence left
+  // (alarm.js refuses to schedule it): snap the switch back off and explain
+  // why; the next re-render derives the same state in update()
+  passed() {
+    this.#switch.checked = false;
+    this.#sync();
+    this.#once.textContent = 'passed';
+    const name = this.#description.textContent || '';
+    this.title = (name ? name + ' - ' : '') + PASSED;
   }
 
   // re-enable a previously active alarm after an edit-and-save
