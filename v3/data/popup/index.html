@@ -47,18 +47,24 @@
           <label><input type="radio" name="repeat" value="monthly"><span>Monthly</span></label>
           <label><input type="radio" name="repeat" value="yearly"><span>Yearly</span></label>
         </div>
-        <div data-id="days" hbox>
-          <input type="checkbox" data-id="M" value="1" title="Monday">
-          <input type="checkbox" data-id="Tu" value="2" title="Tuesday">
-          <input type="checkbox" data-id="W" value="3" title="Wednesday">
-          <input type="checkbox" data-id="Th" value="4" title="Thursday">
-          <input type="checkbox" data-id="F" value="5" title="Friday">
-          <input type="checkbox" data-id="Sa" value="6" title="Saturday">
-          <input type="checkbox" data-id="Su" value="0" title="Sunday">
+        <div data-id="days" vbox>
+          <fieldset>
+            <legend>Weekdays</legend>
+            <div hbox>
+              <input type="checkbox" data-id="M" value="1" title="Monday">
+              <input type="checkbox" data-id="Tu" value="2" title="Tuesday">
+              <input type="checkbox" data-id="W" value="3" title="Wednesday">
+              <input type="checkbox" data-id="Th" value="4" title="Thursday">
+              <input type="checkbox" data-id="F" value="5" title="Friday">
+              <input type="checkbox" data-id="Sa" value="6" title="Saturday">
+              <input type="checkbox" data-id="Su" value="0" title="Sunday">
+            </div>
+          </fieldset>
         </div>
         <div data-id="once-extra" vbox>
+          <label for="new-date">Pick a Date</label>
+          <input type="date" id="new-date" data-id="new-date">
           <div data-id="dates" hbox></div>
-          <input type="date" data-id="new-date" title="Add a date">
         </div>
         <div data-id="monthly-controls" vbox>
           <h3>Day of month</h3>
@@ -80,7 +86,7 @@
           </table>
         </div>
         <div>
-          <input type="text" data-id="name" value="My next Meeting" placeholder="alarm's description">
+          <textarea data-id="name" placeholder="alarm's description"></textarea>
         </div>
         <div data-id="tools" class="bulky">
           <input type="button" value="Cancel" data-command="cancel">

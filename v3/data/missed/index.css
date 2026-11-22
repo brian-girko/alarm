@@ -70,6 +70,7 @@ h1 {
 }
 .entry .title {
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 .entry .when {
   color: #666;
